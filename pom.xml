@@ -315,6 +315,7 @@
             <reuseForks>true</reuseForks>
             <systemPropertyVariables>
                 <java.awt.headless>true</java.awt.headless>
+                <net.bytebuddy.experimental>true</net.bytebuddy.experimental>
             </systemPropertyVariables>
             <failIfNoTests>false</failIfNoTests>
             <environmentVariables>
