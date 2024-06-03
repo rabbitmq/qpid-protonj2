@@ -100,7 +100,9 @@ public final class ClientSender extends ClientSenderLinkType<Sender> implements 
         if (!blocked.isEmpty()) {
             while (sender.isSendable() && !blocked.isEmpty()) {
                 ClientOutgoingEnvelope held = blocked.peek();
-                if (held.delivery() == protonSender.current()) {
+                if (held.request.isDone()) {
+                    blocked.poll();
+                } else if (held.delivery() == protonSender.current()) {
                     LOG.trace("Dispatching previously held send");
                     try {
                         // We don't currently allow a sender to define any outcome so we pass null for
