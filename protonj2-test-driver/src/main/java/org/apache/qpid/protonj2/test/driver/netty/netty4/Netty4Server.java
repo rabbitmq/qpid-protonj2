@@ -238,7 +238,7 @@ public final class Netty4Server implements NettyServer {
     public void start() throws Exception {
         if (started.compareAndSet(false, true)) {
             // Configure the server to basic NIO type channels
-            bossGroup = new NioEventLoopGroup(2);
+            bossGroup = new NioEventLoopGroup(4);
             workerGroup = new NioEventLoopGroup();
 
             ServerBootstrap server = new ServerBootstrap();
