@@ -19,7 +19,7 @@
   <parent>
     <groupId>org.apache</groupId>
     <artifactId>apache</artifactId>
-    <version>30</version>
+    <version>33</version>
   </parent>
   <modelVersion>4.0.0</modelVersion>
 
@@ -40,13 +40,13 @@
     <minimalJavaBuildVersion>11</minimalJavaBuildVersion>
 
     <!-- Test dependency versions -->
-    <junit.jupiter.version>5.10.2</junit.jupiter.version>
-    <junit.vintage.version>5.10.2</junit.vintage.version>
+    <junit.jupiter.version>5.10.3</junit.jupiter.version>
+    <junit.vintage.version>5.10.3</junit.vintage.version>
     <mockito.version>5.12.0</mockito.version>
     <proton.version>0.34.1</proton.version>
     <slf4j.version>1.7.36</slf4j.version>
     <hamcrest.version>2.2</hamcrest.version>
-    <netty.version>4.1.110.Final</netty.version>
+    <netty.version>4.1.111.Final</netty.version>
     <netty.iouring.version>0.0.25.Final</netty.iouring.version>
     <netty5.version>5.0.0.Alpha5</netty5.version>
     <netty.tcnative.version>2.0.65.Final</netty.tcnative.version>
