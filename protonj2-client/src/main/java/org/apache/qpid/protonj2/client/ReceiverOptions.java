@@ -16,7 +16,10 @@
  */
 package org.apache.qpid.protonj2.client;
 
+import org.apache.qpid.protonj2.client.exceptions.ClientException;
+
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 /**
  * Options that control the behavior of the {@link Receiver} created from them.
@@ -26,6 +29,8 @@ public class ReceiverOptions extends LinkOptions<ReceiverOptions> implements Clo
     private long drainTimeout = ConnectionOptions.DEFAULT_DRAIN_TIMEOUT;
     private boolean autoAccept = true;
     private int creditWindow = 10;
+    private Consumer<Delivery> handler;
+    private Consumer<ClientException> closeHandler;
 
     /**
      * Create a new ReceiverOptions instance with defaults set for all options.
@@ -128,6 +133,51 @@ public class ReceiverOptions extends LinkOptions<ReceiverOptions> implements Clo
         return this;
     }
 
+    /**
+     * Behavior when a message is delivered.
+     *
+     * <p>The default is to add the delivery to an internal queue, which can be polled with the <code>
+     * receive</code> methods.
+     *
+     * <p>Setting a custom handler makes the <code>receive</code> methods ineffective.
+     *
+     * @param handler behavior for a new delivery
+     * @return this {@link ReceiverOptions} instance.
+     */
+    public ReceiverOptions handler(Consumer<Delivery> handler) {
+        this.handler = handler;
+        return this;
+    }
+
+    /**
+     * The configured message handler.
+     *
+     * @return the configured handler
+     */
+    public Consumer<Delivery> handler() {
+        return this.handler;
+    }
+
+    /**
+     * Callback when the receiver is closed / shut down.
+     *
+     * @param closeHandler close / shutdown handler
+     * @return this {@link ReceiverOptions} instance.
+     */
+    public ReceiverOptions closeHandler(Consumer<ClientException> closeHandler) {
+        this.closeHandler = closeHandler;
+        return this;
+    }
+
+    /**
+     * Configured close / shutdown handler.
+     *
+     * @return the configured handler
+     */
+    public Consumer<ClientException> closeHandler() {
+        return this.closeHandler;
+    }
+
     @Override
     public ReceiverOptions clone() {
         return copyInto(new ReceiverOptions());
@@ -148,6 +198,8 @@ public class ReceiverOptions extends LinkOptions<ReceiverOptions> implements Clo
         other.autoAccept(autoAccept);
         other.creditWindow(creditWindow);
         other.drainTimeout(drainTimeout);
+        other.handler(handler);
+        other.closeHandler(closeHandler);
 
         return other;
     }
