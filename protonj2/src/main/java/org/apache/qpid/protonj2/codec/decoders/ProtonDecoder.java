@@ -535,7 +535,7 @@ public final class ProtonDecoder implements Decoder {
 
         switch (encodingCode) {
             case EncodingCodes.SMALLINT:
-                return buffer.readByte() & 0xff;
+                return (int) buffer.readByte();
             case EncodingCodes.INT:
                 return buffer.readInt();
             case EncodingCodes.NULL:
@@ -551,7 +551,7 @@ public final class ProtonDecoder implements Decoder {
 
         switch (encodingCode) {
             case EncodingCodes.SMALLINT:
-                return buffer.readByte() & 0xff;
+                return buffer.readByte();
             case EncodingCodes.INT:
                 return buffer.readInt();
             case EncodingCodes.NULL:
@@ -621,7 +621,7 @@ public final class ProtonDecoder implements Decoder {
 
         switch (encodingCode) {
             case EncodingCodes.SMALLLONG:
-                return (long) buffer.readByte() & 0xff;
+                return (long) buffer.readByte();
             case EncodingCodes.LONG:
                 return buffer.readLong();
             case EncodingCodes.NULL:
@@ -637,7 +637,7 @@ public final class ProtonDecoder implements Decoder {
 
         switch (encodingCode) {
             case EncodingCodes.SMALLLONG:
-                return (long) buffer.readByte() & 0xff;
+                return buffer.readByte();
             case EncodingCodes.LONG:
                 return buffer.readLong();
             case EncodingCodes.NULL:
