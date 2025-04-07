@@ -29,6 +29,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
 
+import io.netty.channel.MultiThreadIoEventLoopGroup;
+import io.netty.channel.nio.NioIoHandler;
 import org.apache.qpid.protonj2.client.SslOptions;
 import org.apache.qpid.protonj2.client.TransportOptions;
 import org.slf4j.Logger;
@@ -48,7 +50,6 @@ import io.netty.channel.ChannelOption;
 import io.netty.channel.ChannelOutboundHandlerAdapter;
 import io.netty.channel.ChannelPromise;
 import io.netty.channel.EventLoopGroup;
-import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpRequest;
@@ -194,8 +195,8 @@ public abstract class NettyServer implements AutoCloseable {
         if (started.compareAndSet(false, true)) {
 
             // Configure the server.
-            bossGroup = new NioEventLoopGroup(1);
-            workerGroup = new NioEventLoopGroup();
+            bossGroup = new MultiThreadIoEventLoopGroup(1, NioIoHandler.newFactory());
+            workerGroup = new MultiThreadIoEventLoopGroup(NioIoHandler.newFactory());
 
             ServerBootstrap server = new ServerBootstrap();
             server.group(bossGroup, workerGroup);
