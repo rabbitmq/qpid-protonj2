@@ -25,6 +25,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
@@ -93,6 +94,7 @@ public abstract class NettyServer implements AutoCloseable {
     private volatile SslHandler sslHandler;
     private volatile HandshakeComplete handshakeComplete;
     private final CountDownLatch handshakeCompletion = new CountDownLatch(1);
+    private final AtomicInteger activeChannelCount = new AtomicInteger();
 
     private final AtomicBoolean started = new AtomicBoolean();
 
@@ -148,6 +150,10 @@ public abstract class NettyServer implements AutoCloseable {
 
     public boolean awaitHandshakeCompletion(long delayMs) throws InterruptedException {
         return handshakeCompletion.await(delayMs, TimeUnit.MILLISECONDS);
+    }
+
+    public int activeChannelCount() {
+        return activeChannelCount.get();
     }
 
     public HandshakeComplete getHandshakeComplete() {
@@ -318,6 +324,7 @@ public abstract class NettyServer implements AutoCloseable {
 
         @Override
         public void channelActive(final ChannelHandlerContext ctx) {
+            activeChannelCount.incrementAndGet();
             LOG.info("NettyServerHandler -> New active channel: {}", ctx.channel());
             SslHandler handler = ctx.pipeline().get(SslHandler.class);
             if (handler != null) {
@@ -335,6 +342,7 @@ public abstract class NettyServer implements AutoCloseable {
 
         @Override
         public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+            activeChannelCount.decrementAndGet();
             LOG.info("NettyServerHandler: channel has gone inactive: {}", ctx.channel());
             ctx.close();
         }
