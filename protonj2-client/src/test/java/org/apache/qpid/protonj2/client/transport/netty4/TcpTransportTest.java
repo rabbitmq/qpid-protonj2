@@ -34,6 +34,10 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import io.netty.channel.Channel;
+import io.netty.channel.epoll.EpollSocketChannel;
+import io.netty.channel.kqueue.KQueueSocketChannel;
+import io.netty.incubator.channel.uring.IOUringSocketChannel;
 import org.apache.qpid.protonj2.buffer.ProtonBuffer;
 import org.apache.qpid.protonj2.buffer.ProtonBufferAllocator;
 import org.apache.qpid.protonj2.buffer.netty.Netty4ProtonBufferAllocator;
@@ -56,11 +60,8 @@ import org.slf4j.LoggerFactory;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.UnpooledByteBufAllocator;
 import io.netty.channel.epoll.Epoll;
-import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.kqueue.KQueue;
-import io.netty.channel.kqueue.KQueueEventLoopGroup;
 import io.netty.incubator.channel.uring.IOUring;
-import io.netty.incubator.channel.uring.IOUringEventLoopGroup;
 import io.netty.util.ResourceLeakDetector;
 import io.netty.util.ResourceLeakDetector.Level;
 
@@ -937,13 +938,13 @@ public class TcpTransportTest extends ImperativeClientTestCase {
         assertTrue(data.isEmpty());
     }
 
-    private void assertEpoll(String message, boolean expected, Transport transport) throws Exception {
-        Field bootstrap = null;
+    private Channel channel(Transport transport) {
+        Field channel = null;
         Class<?> transportType = transport.getClass();
 
-        while (transportType != null && bootstrap == null) {
+        while (transportType != null && channel == null) {
             try {
-                bootstrap = transportType.getDeclaredField("bootstrap");
+                channel = transportType.getDeclaredField("channel");
             } catch (NoSuchFieldException error) {
                 transportType = transportType.getSuperclass();
                 if (Object.class.equals(transportType)) {
@@ -952,44 +953,29 @@ public class TcpTransportTest extends ImperativeClientTestCase {
             }
         }
 
-        assertNotNull(bootstrap, "Transport implementation unknown");
+        assertNotNull(channel, "Transport implementation unknown");
+        try {
+            return (Channel) channel.get(transport);
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException(e);
+      }
+    }
 
-        bootstrap.setAccessible(true);
-
-        Bootstrap transportBootstrap = (Bootstrap) bootstrap.get(transport);
-
+    private void assertEpoll(String message, boolean expected, Transport transport) throws Exception {
+        Channel channel = channel(transport);
         if (expected) {
-            assertTrue(transportBootstrap.config().group() instanceof EpollEventLoopGroup, message);
+            assertTrue(channel instanceof EpollSocketChannel, message);
         } else {
-            assertFalse(transportBootstrap.config().group() instanceof EpollEventLoopGroup, message);
+            assertFalse(channel instanceof EpollSocketChannel, message);
         }
     }
 
     private void assertIOUring(String message, boolean expected, Transport transport) throws Exception {
-        Field bootstrap = null;
-        Class<?> transportType = transport.getClass();
-
-        while (transportType != null && bootstrap == null) {
-            try {
-                bootstrap = transportType.getDeclaredField("bootstrap");
-            } catch (NoSuchFieldException error) {
-                transportType = transportType.getSuperclass();
-                if (Object.class.equals(transportType)) {
-                    transportType = null;
-                }
-            }
-        }
-
-        assertNotNull(bootstrap, "Transport implementation unknown");
-
-        bootstrap.setAccessible(true);
-
-        Bootstrap transportBootstrap = (Bootstrap) bootstrap.get(transport);
-
+        Channel channel = channel(transport);
         if (expected) {
-            assertTrue(transportBootstrap.config().group() instanceof IOUringEventLoopGroup, message);
+            assertTrue(channel instanceof IOUringSocketChannel, message);
         } else {
-            assertFalse(transportBootstrap.config().group() instanceof IOUringEventLoopGroup, message);
+            assertFalse(channel instanceof IOUringSocketChannel, message);
         }
     }
 
@@ -1085,27 +1071,11 @@ public class TcpTransportTest extends ImperativeClientTestCase {
     }
 
     private void assertKQueue(String message, boolean expected, Transport transport) throws Exception {
-        Field group = null;
-        Class<?> transportType = transport.getClass();
-
-        while (transportType != null && group == null) {
-            try {
-                group = transportType.getDeclaredField("group");
-            } catch (NoSuchFieldException error) {
-                transportType = transportType.getSuperclass();
-                if (Object.class.equals(transportType)) {
-                    transportType = null;
-                }
-            }
-        }
-
-        assertNotNull(group, "Transport implementation unknown");
-
-        group.setAccessible(true);
+        Channel channel = channel(transport);
         if (expected) {
-            assertTrue(group.get(transport) instanceof KQueueEventLoopGroup, message);
+            assertTrue(channel instanceof KQueueSocketChannel, message);
         } else {
-            assertFalse(group.get(transport) instanceof KQueueEventLoopGroup, message);
+            assertFalse(channel instanceof KQueueSocketChannel, message);
         }
     }
 
