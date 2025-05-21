@@ -27,4 +27,4 @@ jobs:
       - name: Display Java version
         run: ./mvnw --version
       - name: Build & Test
-        run: mvn clean verify
+        run: ./mvnw clean verify
