@@ -37,7 +37,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import io.netty.channel.Channel;
 import io.netty.channel.epoll.EpollSocketChannel;
 import io.netty.channel.kqueue.KQueueSocketChannel;
-import io.netty.incubator.channel.uring.IOUringSocketChannel;
+import io.netty.channel.uring.IoUring;
+import io.netty.channel.uring.IoUringSocketChannel;
 import org.apache.qpid.protonj2.buffer.ProtonBuffer;
 import org.apache.qpid.protonj2.buffer.ProtonBufferAllocator;
 import org.apache.qpid.protonj2.buffer.netty.Netty4ProtonBufferAllocator;
@@ -61,7 +62,6 @@ import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.UnpooledByteBufAllocator;
 import io.netty.channel.epoll.Epoll;
 import io.netty.channel.kqueue.KQueue;
-import io.netty.incubator.channel.uring.IOUring;
 import io.netty.util.ResourceLeakDetector;
 import io.netty.util.ResourceLeakDetector.Level;
 
@@ -904,7 +904,7 @@ public class TcpTransportTest extends ImperativeClientTestCase {
     }
 
     private void doTestIORingSupport(boolean useIOUring) throws Exception {
-        assumeTrue(IOUring.isAvailable());
+        assumeTrue(IoUring.isAvailable());
 
         try (NettyEchoServer server = createEchoServer()) {
             server.start();
@@ -973,9 +973,9 @@ public class TcpTransportTest extends ImperativeClientTestCase {
     private void assertIOUring(String message, boolean expected, Transport transport) throws Exception {
         Channel channel = channel(transport);
         if (expected) {
-            assertTrue(channel instanceof IOUringSocketChannel, message);
+            assertTrue(channel instanceof IoUringSocketChannel, message);
         } else {
-            assertFalse(channel instanceof IOUringSocketChannel, message);
+            assertFalse(channel instanceof IoUringSocketChannel, message);
         }
     }
 
