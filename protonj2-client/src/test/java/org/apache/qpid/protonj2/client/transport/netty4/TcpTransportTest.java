@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -30,15 +31,11 @@ import java.io.IOException;
 import java.lang.reflect.Field;
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import io.netty.channel.Channel;
-import io.netty.channel.epoll.EpollSocketChannel;
-import io.netty.channel.kqueue.KQueueSocketChannel;
-import io.netty.channel.uring.IoUring;
-import io.netty.channel.uring.IoUringSocketChannel;
 import org.apache.qpid.protonj2.buffer.ProtonBuffer;
 import org.apache.qpid.protonj2.buffer.ProtonBufferAllocator;
 import org.apache.qpid.protonj2.buffer.netty.Netty4ProtonBufferAllocator;
@@ -60,10 +57,10 @@ import org.slf4j.LoggerFactory;
 
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.UnpooledByteBufAllocator;
-import io.netty.channel.epoll.Epoll;
-import io.netty.channel.kqueue.KQueue;
+import io.netty.channel.EventLoopGroup;
 import io.netty.util.ResourceLeakDetector;
 import io.netty.util.ResourceLeakDetector.Level;
+import io.netty.util.concurrent.EventExecutor;
 
 /**
  * Test basic functionality of the Netty based TCP transport.
@@ -79,7 +76,7 @@ public class TcpTransportTest extends ImperativeClientTestCase {
     protected volatile boolean transportInitialized;
     protected volatile boolean transportConnected;
     protected volatile boolean transportErrored;
-    protected final List<Throwable> exceptions = new ArrayList<>();
+    protected final List<Throwable> exceptions = Collections.synchronizedList(new ArrayList<>());
     protected final List<ProtonBuffer> data = new ArrayList<>();
     protected final AtomicInteger bytesRead = new AtomicInteger();
 
@@ -390,7 +387,9 @@ public class TcpTransportTest extends ImperativeClientTestCase {
             }
 
             assertTrue(transport.isConnected());
-            assertTrue(Wait.waitFor(() -> server.activeChannelCount() == 1, 1_000, 10));
+            assertSame(testListener, transport.getTransportListener());
+            assertEquals(HOSTNAME, transport.getHost());
+            assertTrue(Wait.waitFor(() -> server.getTotalConnections() == 1));
         }
 
         final Transport connectedTransport = transport;
@@ -859,7 +858,7 @@ public class TcpTransportTest extends ImperativeClientTestCase {
     }
 
     private void doTestEpollSupport(boolean useEpoll) throws Exception {
-        assumeTrue(Epoll.isAvailable());
+        assumeTrue(EpollSupport.isAvailable());
 
         try (NettyEchoServer server = createEchoServer()) {
             server.start();
@@ -904,7 +903,7 @@ public class TcpTransportTest extends ImperativeClientTestCase {
     }
 
     private void doTestIORingSupport(boolean useIOUring) throws Exception {
-        assumeTrue(IoUring.isAvailable());
+        assumeTrue(IOUringSupport.isAvailable());
 
         try (NettyEchoServer server = createEchoServer()) {
             server.start();
@@ -938,47 +937,6 @@ public class TcpTransportTest extends ImperativeClientTestCase {
         assertTrue(data.isEmpty());
     }
 
-    private Channel channel(Transport transport) {
-        Field channel = null;
-        Class<?> transportType = transport.getClass();
-
-        while (transportType != null && channel == null) {
-            try {
-                channel = transportType.getDeclaredField("channel");
-            } catch (NoSuchFieldException error) {
-                transportType = transportType.getSuperclass();
-                if (Object.class.equals(transportType)) {
-                    transportType = null;
-                }
-            }
-        }
-
-        assertNotNull(channel, "Transport implementation unknown");
-        try {
-            return (Channel) channel.get(transport);
-        } catch (IllegalAccessException e) {
-            throw new RuntimeException(e);
-      }
-    }
-
-    private void assertEpoll(String message, boolean expected, Transport transport) throws Exception {
-        Channel channel = channel(transport);
-        if (expected) {
-            assertTrue(channel instanceof EpollSocketChannel, message);
-        } else {
-            assertFalse(channel instanceof EpollSocketChannel, message);
-        }
-    }
-
-    private void assertIOUring(String message, boolean expected, Transport transport) throws Exception {
-        Channel channel = channel(transport);
-        if (expected) {
-            assertTrue(channel instanceof IoUringSocketChannel, message);
-        } else {
-            assertFalse(channel instanceof IoUringSocketChannel, message);
-        }
-    }
-
     @Test
     public void testConnectToServerWithKQueueEnabled() throws Exception {
         doTestKQueueSupport(true);
@@ -990,7 +948,7 @@ public class TcpTransportTest extends ImperativeClientTestCase {
     }
 
     private void doTestKQueueSupport(boolean useKQueue) throws Exception {
-        assumeTrue(KQueue.isAvailable());
+        assumeTrue(KQueueSupport.isAvailable());
 
         try (NettyEchoServer server = createEchoServer()) {
             server.start();
@@ -1025,14 +983,21 @@ public class TcpTransportTest extends ImperativeClientTestCase {
 
     @Test
     public void testFallbackToNioWhenNativeIOConfiguredNotSupportedEpoll() throws Exception {
-        assumeFalse(Epoll.isAvailable());
+        assumeFalse(EpollSupport.isAvailable());
 
         doTestFallbackToNioWhenNativeLayerNotSupported(EpollSupport.NAME);
     }
 
     @Test
+    public void testFallbackToNioWhenNativeIOConfiguredNotSupportedIOUring() throws Exception {
+        assumeFalse(IOUringSupport.isAvailable());
+
+        doTestFallbackToNioWhenNativeLayerNotSupported(IOUringSupport.NAME);
+    }
+
+    @Test
     public void testFallbackToNioWhenNativeIOConfiguredNotSupportedKQueue() throws Exception {
-        assumeFalse(KQueue.isAvailable());
+        assumeFalse(KQueueSupport.isAvailable());
 
         doTestFallbackToNioWhenNativeLayerNotSupported(KQueueSupport.NAME);
     }
@@ -1070,12 +1035,114 @@ public class TcpTransportTest extends ImperativeClientTestCase {
         assertTrue(data.isEmpty());
     }
 
-    private void assertKQueue(String message, boolean expected, Transport transport) throws Exception {
-        Channel channel = channel(transport);
+    private void assertEpoll(String message, boolean expected, Transport transport) throws Exception {
+        final IOSubsystem ioHandler = extractIOSubsysten(transport);
+
         if (expected) {
-            assertTrue(channel instanceof KQueueSocketChannel, message);
+            assertTrue(IOSubsystem.EPOLL.equals(ioHandler));
         } else {
-            assertFalse(channel instanceof KQueueSocketChannel, message);
+            assertFalse(IOSubsystem.EPOLL.equals(ioHandler));
+        }
+    }
+
+    private void assertIOUring(String message, boolean expected, Transport transport) throws Exception {
+        final IOSubsystem ioHandler = extractIOSubsysten(transport);
+
+        if (expected) {
+            assertTrue(IOSubsystem.IO_URING.equals(ioHandler));
+        } else {
+            assertFalse(IOSubsystem.IO_URING.equals(ioHandler));
+        }
+    }
+
+    private void assertKQueue(String message, boolean expected, Transport transport) throws Exception {
+        final IOSubsystem ioHandler = extractIOSubsysten(transport);
+
+        if (expected) {
+            assertTrue(IOSubsystem.KQUEUE.equals(ioHandler));
+        } else {
+            assertFalse(IOSubsystem.KQUEUE.equals(ioHandler));
+        }
+    }
+
+    private enum IOSubsystem {
+        NIO, EPOLL, KQUEUE, IO_URING;
+    }
+
+    private IOSubsystem extractIOSubsysten(Transport transport) throws Exception {
+        Field bootstrap = null;
+        Class<?> transportType = transport.getClass();
+
+        while (transportType != null && bootstrap == null) {
+            try {
+                bootstrap = transportType.getDeclaredField("bootstrap");
+            } catch (NoSuchFieldException error) {
+                transportType = transportType.getSuperclass();
+                if (Object.class.equals(transportType)) {
+                    transportType = null;
+                }
+            }
+        }
+
+        assertNotNull(bootstrap, "Transport implementation unknown");
+
+        bootstrap.setAccessible(true);
+
+        final Bootstrap transportBootstrap = (Bootstrap) bootstrap.get(transport);
+        final EventLoopGroup group = transportBootstrap.config().group();
+        final String eventLoopGroupName = group.getClass().getSimpleName();
+
+        // Prior to Netty 4.2 the EventLoopGroup implementation indicates the IO layer in use
+        if (eventLoopGroupName.startsWith("Nio")) {
+            return IOSubsystem.NIO;
+        } else if (eventLoopGroupName.startsWith("Epoll")) {
+            return IOSubsystem.EPOLL;
+        } else if (eventLoopGroupName.startsWith("IOUring")) {
+            return IOSubsystem.IO_URING;
+        } else if (eventLoopGroupName.startsWith("KQueue")) {
+            return IOSubsystem.KQUEUE;
+        }
+
+        // Post Netty 4.2 we need to find the IOHandler that drives the EventLoopGroup
+        Field children = null;
+        Class<?> groupType = group.getClass();
+
+        while (groupType != null && children == null) {
+            try {
+                children = groupType.getDeclaredField("children");
+            } catch (NoSuchFieldException error) {
+                groupType = groupType.getSuperclass();
+                if (Object.class.equals(groupType)) {
+                    groupType = null;
+                }
+            }
+        }
+
+        children.setAccessible(true);
+
+        final EventExecutor[] executors = (EventExecutor[]) children.get(group);
+        final EventExecutor executor = executors[0];
+        final Field ioHandlerField = executor.getClass().getDeclaredField("ioHandler");
+
+        if (ioHandlerField != null) {
+            ioHandlerField.setAccessible(true);
+
+            final String ioHandlerName = ioHandlerField.get(executor) != null ?
+                ioHandlerField.get(executor) .getClass().getSimpleName() : "Nio";
+
+            if (ioHandlerName.startsWith("Nio")) {
+                return IOSubsystem.NIO;
+            } else if (ioHandlerName.startsWith("Epoll")) {
+                return IOSubsystem.EPOLL;
+            } else if (ioHandlerName.startsWith("IoUring")) {
+                return IOSubsystem.IO_URING;
+            } else if (ioHandlerName.startsWith("KQueue")) {
+                return IOSubsystem.KQUEUE;
+            } else {
+                return IOSubsystem.NIO;
+            }
+        } else {
+            return IOSubsystem.NIO; // Safe default since we found nothing we recognize
         }
     }
 
