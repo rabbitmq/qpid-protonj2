@@ -20,7 +20,7 @@
   <parent>
     <groupId>org.apache.qpid</groupId>
     <artifactId>protonj2-parent</artifactId>
-    <version>1.1.1-SNAPSHOT</version>
+    <version>2.0.0-SNAPSHOT</version>
   </parent>
 
   <artifactId>protonj2-test-driver</artifactId>
@@ -32,27 +32,22 @@
     <dependency>
       <groupId>io.netty</groupId>
       <artifactId>netty-buffer</artifactId>
-      <scope>${netty-scope}</scope>
     </dependency>
     <dependency>
       <groupId>io.netty</groupId>
       <artifactId>netty-common</artifactId>
-      <scope>${netty-scope}</scope>
     </dependency>
     <dependency>
       <groupId>io.netty</groupId>
       <artifactId>netty-handler</artifactId>
-      <scope>${netty-scope}</scope>
     </dependency>
     <dependency>
       <groupId>io.netty</groupId>
       <artifactId>netty-transport</artifactId>
-      <scope>${netty-scope}</scope>
     </dependency>
     <dependency>
       <groupId>io.netty</groupId>
       <artifactId>netty-codec-http</artifactId>
-      <scope>${netty-scope}</scope>
     </dependency>
     <!-- All other test peer dependencies -->
     <dependency>

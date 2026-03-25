@@ -25,15 +25,14 @@
 
   <groupId>org.apache.qpid</groupId>
   <artifactId>protonj2-parent</artifactId>
-  <version>1.1.1-SNAPSHOT</version>
+  <version>2.0.0-SNAPSHOT</version>
   <packaging>pom</packaging>
 
   <name>Qpid ProtonJ2 Parent</name>
   <description>Qpid ProtonJ2 is a library for speaking AMQP 1.0.</description>
 
   <properties>
-    <javaVersion>11</javaVersion>
-    <minimalJavaBuildVersion>17</minimalJavaBuildVersion>
+    <javaVersion>17</javaVersion>
 
     <!-- Test dependency versions -->
     <junit.jupiter.version>5.14.3</junit.jupiter.version>
@@ -52,7 +51,6 @@
     <surefire.runOrder>filesystem</surefire.runOrder>
     <proton.trace.frames>false</proton.trace.frames>
 
-    <netty-scope>compile</netty-scope>
     <netty-transport-native-io-uring-classifier>linux-x86_64</netty-transport-native-io-uring-classifier>
     <netty-transport-native-epoll-classifier>linux-x86_64</netty-transport-native-epoll-classifier>
     <netty-transport-native-kqueue-classifier>osx-x86_64</netty-transport-native-kqueue-classifier>
@@ -62,7 +60,7 @@
     <!-- surefire forked jvm arguments -->
     <argLine>-Xmx2g -enableassertions ${jacoco-config}</argLine>
 
-    <project.build.outputTimestamp>2026-01-12T21:09:17Z</project.build.outputTimestamp>
+    <project.build.outputTimestamp>2026-03-24T20:26:19Z</project.build.outputTimestamp>
   </properties>
 
   <url>https://qpid.apache.org/proton</url>

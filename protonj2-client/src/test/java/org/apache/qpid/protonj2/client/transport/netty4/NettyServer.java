@@ -51,6 +51,11 @@ import io.netty.channel.ChannelOption;
 import io.netty.channel.ChannelOutboundHandlerAdapter;
 import io.netty.channel.ChannelPromise;
 import io.netty.channel.EventLoopGroup;
+<<<<<<< HEAD
+=======
+import io.netty.channel.MultiThreadIoEventLoopGroup;
+import io.netty.channel.nio.NioIoHandler;
+>>>>>>> upstream/main
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpRequest;
@@ -202,7 +207,11 @@ public abstract class NettyServer implements AutoCloseable {
 
             // Configure the server.
             bossGroup = new MultiThreadIoEventLoopGroup(1, NioIoHandler.newFactory());
+<<<<<<< HEAD
             workerGroup = new MultiThreadIoEventLoopGroup(NioIoHandler.newFactory());
+=======
+            workerGroup = new MultiThreadIoEventLoopGroup(1, NioIoHandler.newFactory());
+>>>>>>> upstream/main
 
             ServerBootstrap server = new ServerBootstrap();
             server.group(bossGroup, workerGroup);
