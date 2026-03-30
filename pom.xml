@@ -33,7 +33,7 @@
 
   <properties>
     <javaVersion>11</javaVersion>
-    <minimalJavaBuildVersion>17</minimalJavaBuildVersion>
+    <minimalJavaBuildVersion>11</minimalJavaBuildVersion>
 
     <!-- Test dependency versions -->
     <junit.jupiter.version>5.14.3</junit.jupiter.version>
