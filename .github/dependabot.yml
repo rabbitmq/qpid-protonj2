@@ -13,8 +13,24 @@ updates:
         versions: [ "[2.0,)" ]
       - dependency-name: "org.junit.jupiter:*"
         versions: [ "[6.0,)" ]
+  - package-ecosystem: "maven"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    open-pull-requests-limit: 20
+    target-branch: "1.x"
+    ignore:
+      - dependency-name: "org.slf4j:slf4j-api"
+        versions: [ "[2.0,)" ]
+      - dependency-name: "org.junit.jupiter:*"
+        versions: [ "[6.0,)" ]
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "daily"
     target-branch: "main"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    target-branch: "1.x"

@@ -1,0 +1,29 @@
+name: Test against supported Java versions (1.x)
+
+on:
+  schedule:
+    - cron:  '0 4 * * *'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        distribution: [ 'temurin' ]
+        version: [ '111, '17', '21', '25', '26-ea', '27-ea' ]
+    name:  Test against Java ${{ matrix.distribution }} ${{ matrix.version }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: 1.x
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: ${{ matrix.distribution }}
+          java-version: ${{ matrix.version }}
+          cache: 'maven'
+      - name: Display Java version
+        run: ./mvnw --version
+      - name: Build & Test
+        run: ./mvnw clean verify
