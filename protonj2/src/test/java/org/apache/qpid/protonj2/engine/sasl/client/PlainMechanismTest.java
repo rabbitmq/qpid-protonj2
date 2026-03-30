@@ -64,9 +64,9 @@ public class PlainMechanismTest extends MechanismTestBase {
     }
 
     @Test
-    public void testIsNotApplicableWithEmptyUser() {
-        assertFalse(SaslMechanisms.PLAIN.createMechanism().isApplicable(credentials("", "pass", false)),
-            "Should not be applicable with empty username");
+    public void testIsApplicableWithEmptyUser() {
+        assertTrue(SaslMechanisms.PLAIN.createMechanism().isApplicable(credentials("", "pass", false)),
+            "Should be applicable with empty username");
     }
 
     @Test

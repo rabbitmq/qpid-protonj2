@@ -26,6 +26,7 @@ import org.apache.qpid.protonj2.types.transport.Disposition;
 import org.apache.qpid.protonj2.types.transport.Flow;
 import org.apache.qpid.protonj2.types.transport.Role;
 import org.apache.qpid.protonj2.types.transport.Transfer;
+import org.apache.qpid.protonj2.types.transport.DeliveryState;
 
 /**
  * Tracks the incoming window and provides management of that window in relation to receiver links.
@@ -195,7 +196,7 @@ public class ProtonSessionIncomingWindow {
         return incomingWindow;
     }
 
-    void writeFlow(ProtonReceiver link) {
+    public void writeFlow(ProtonReceiver link) {
         updateIncomingWindow();
         session.writeFlow(link);
     }
@@ -233,6 +234,18 @@ public class ProtonSessionIncomingWindow {
 
             engine.fireWrite(cachedDisposition, session.getLocalChannel());
         }
+    }
+
+    void processDisposition(DeliveryState state, long [] range) {
+        unsettled.removeEach((int) range[0], (int) range[1], d -> { });
+        cachedDisposition.reset();
+        cachedDisposition.setFirst(range[0]);
+        cachedDisposition.setLast(range[1]);
+        cachedDisposition.setRole(Role.RECEIVER);
+        cachedDisposition.setSettled(true);
+        cachedDisposition.setState(state);
+
+        engine.fireWrite(cachedDisposition, session.getLocalChannel());
     }
 
     void deliveryRead(ProtonIncomingDelivery delivery, int bytesRead) {

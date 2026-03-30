@@ -22,7 +22,9 @@ import java.net.URISyntaxException;
 import java.security.Principal;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.IntConsumer;
 
+import io.netty.buffer.PooledByteBufAllocator;
 import org.apache.qpid.protonj2.buffer.ProtonBuffer;
 import org.apache.qpid.protonj2.buffer.ProtonBufferAllocator;
 import org.apache.qpid.protonj2.buffer.ProtonBufferComponent;
@@ -69,6 +71,8 @@ public class TcpTransport implements Transport {
     protected final TransportOptions options;
     protected final SslOptions sslOptions;
     protected final Bootstrap bootstrap;
+    private final IntConsumer readBytesConsumer;
+    protected final IntConsumer writtenBytesConsumer;
 
     protected Channel channel;
     protected volatile IOException failureCause;
@@ -103,6 +107,8 @@ public class TcpTransport implements Transport {
         this.sslOptions = sslOptions;
         this.options = options;
         this.bootstrap = bootstrap;
+        this.readBytesConsumer = options.readBytesConsumer();
+        this.writtenBytesConsumer = options.writtenBytesConsumer();
     }
 
     @Override
@@ -343,6 +349,8 @@ public class TcpTransport implements Transport {
                     }
                 }
 
+                this.writtenBytesConsumer.accept(nettyBuf.writableBytes());
+
                 if (--writeCount > 0) {
                     channel.write(nettyBuf, channel.voidPromise());
                 } else {
@@ -421,6 +429,7 @@ public class TcpTransport implements Transport {
         bootstrap.option(ChannelOption.CONNECT_TIMEOUT_MILLIS, options.connectTimeout());
         bootstrap.option(ChannelOption.SO_KEEPALIVE, options.tcpKeepAlive());
         bootstrap.option(ChannelOption.SO_LINGER, options.soLinger());
+        bootstrap.option(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT);
 
         if (options.sendBufferSize() != -1) {
             bootstrap.option(ChannelOption.SO_SNDBUF, options.sendBufferSize());
@@ -428,7 +437,7 @@ public class TcpTransport implements Transport {
 
         if (options.receiveBufferSize() != -1) {
             bootstrap.option(ChannelOption.SO_RCVBUF, options.receiveBufferSize());
-            bootstrap.option(ChannelOption.RCVBUF_ALLOCATOR, new FixedRecvByteBufAllocator(options.receiveBufferSize()));
+            bootstrap.option(ChannelOption.RECVBUF_ALLOCATOR, new FixedRecvByteBufAllocator(options.receiveBufferSize()));
         }
 
         if (options.trafficClass() != -1) {
@@ -528,6 +537,7 @@ public class TcpTransport implements Transport {
             final ProtonBuffer wrapped = nettyAllocator.wrap(buffer).convertToReadOnly();
 
             try (wrapped) {
+                readBytesConsumer.accept(wrapped.getReadableBytes());
                 listener.transportRead(wrapped);
             }
         }

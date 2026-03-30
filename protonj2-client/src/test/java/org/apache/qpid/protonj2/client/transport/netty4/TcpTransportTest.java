@@ -378,6 +378,7 @@ public class TcpTransportTest extends ImperativeClientTestCase {
             int port = server.getServerPort();
 
             transport = createTransport(createTransportOptions(), createSSLOptions());
+            assertEquals(0, server.activeChannelCount());
             try {
                 transport.connect(HOSTNAME, port, testListener).awaitConnect();
                 LOG.info("Connected to server:{}:{} as expected.", HOSTNAME, port);
@@ -388,7 +389,6 @@ public class TcpTransportTest extends ImperativeClientTestCase {
             assertTrue(transport.isConnected());
             assertSame(testListener, transport.getTransportListener());
             assertEquals(HOSTNAME, transport.getHost());
-
             assertTrue(Wait.waitFor(() -> server.getTotalConnections() == 1));
         }
 

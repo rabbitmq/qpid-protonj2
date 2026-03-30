@@ -33,16 +33,15 @@
 
   <properties>
     <javaVersion>11</javaVersion>
-    <minimalJavaBuildVersion>17</minimalJavaBuildVersion>
+    <minimalJavaBuildVersion>11</minimalJavaBuildVersion>
 
     <!-- Test dependency versions -->
-    <junit.jupiter.version>5.13.4</junit.jupiter.version>
+    <junit.jupiter.version>5.14.3</junit.jupiter.version>
     <mockito.version>5.23.0</mockito.version>
     <proton.version>0.34.1</proton.version>
     <slf4j.version>2.0.17</slf4j.version>
     <hamcrest.version>3.0</hamcrest.version>
-    <netty.version>4.1.131.Final</netty.version>
-    <netty.iouring.version>0.0.26.Final</netty.iouring.version>
+    <netty.version>4.2.12.Final</netty.version>
     <netty.tcnative.version>2.0.75.Final</netty.tcnative.version>
 
     <!-- Plugin versions -->
@@ -156,9 +155,9 @@
         <classifier>${netty-transport-native-kqueue-classifier}</classifier>
       </dependency>
       <dependency>
-        <groupId>io.netty.incubator</groupId>
-        <artifactId>netty-incubator-transport-native-io_uring</artifactId>
-        <version>${netty.iouring.version}</version>
+        <groupId>io.netty</groupId>
+        <artifactId>netty-transport-native-io_uring</artifactId>
+        <version>${netty.version}</version>
         <classifier>${netty-transport-native-io-uring-classifier}</classifier>
       </dependency>
       <!--  Testing only Uber Jar inclusion -->
@@ -267,6 +266,7 @@
             <reuseForks>true</reuseForks>
             <systemPropertyVariables>
                 <java.awt.headless>true</java.awt.headless>
+                <net.bytebuddy.experimental>true</net.bytebuddy.experimental>
             </systemPropertyVariables>
             <failIfNoTests>false</failIfNoTests>
             <environmentVariables>

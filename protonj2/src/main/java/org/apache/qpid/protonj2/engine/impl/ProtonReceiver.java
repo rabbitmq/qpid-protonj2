@@ -21,6 +21,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Consumer;
 import java.util.function.Predicate;
 
 import org.apache.qpid.protonj2.buffer.ProtonBuffer;
@@ -45,6 +46,12 @@ import org.apache.qpid.protonj2.types.transport.Transfer;
  * Proton Receiver link implementation.
  */
 public class ProtonReceiver extends ProtonLink<Receiver> implements Receiver {
+
+    private static final Consumer<ProtonIncomingDelivery> RELEASE_INCOMING_DELIVERY_TAG_CALLBACK = d -> {
+        if (d.getTag() != null) {
+            d.getTag().release();
+        }
+    };
 
     private EventHandler<IncomingDelivery> deliveryReadEventHandler = null;
     private EventHandler<IncomingDelivery> deliveryAbortedEventHandler = null;
@@ -236,6 +243,14 @@ public class ProtonReceiver extends ProtonLink<Receiver> implements Receiver {
                     delivery.getTag().release();
                 }
             }
+        }
+    }
+
+    public void disposition(DeliveryState state, long[] range) {
+        try {
+            sessionWindow.processDisposition(state, range);
+        } finally {
+            unsettled.removeEach((int) range[0], (int) range[1], RELEASE_INCOMING_DELIVERY_TAG_CALLBACK);
         }
     }
 
@@ -446,6 +461,9 @@ public class ProtonReceiver extends ProtonLink<Receiver> implements Receiver {
             flow.setDeliveryCount(getCreditState().getDeliveryCount());
         }
         flow.setDrain(isDraining());
+        if (getCreditState().isEcho()) {
+            flow.setEcho(true);
+        }
 
         return this;
     }
@@ -463,5 +481,13 @@ public class ProtonReceiver extends ProtonLink<Receiver> implements Receiver {
                 new ProtocolViolationException("Illegal multiplex of deliveries on same link with delivery-id " +
                                                currentDeliveryId + " and " + transfer.getDeliveryId()));
         }
+    }
+
+    public ProtonSessionIncomingWindow sessionWindow() {
+        return this.sessionWindow;
+    }
+
+    public EventHandler<Receiver> linkCreditUpdatedHandler() {
+        return this.linkCreditUpdatedHandler;
     }
 }

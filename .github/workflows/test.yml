@@ -1,0 +1,24 @@
+name: Test (1.x)
+
+on:
+  push:
+    branches:
+      - 1.x
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'maven'
+      - name: Display Java version
+        run: ./mvnw --version
+      - name: Build & Test
+        run: ./mvnw clean verify

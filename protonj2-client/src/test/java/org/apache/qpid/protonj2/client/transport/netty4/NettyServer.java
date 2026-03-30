@@ -30,6 +30,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
 
+import io.netty.channel.MultiThreadIoEventLoopGroup;
+import io.netty.channel.nio.NioIoHandler;
 import org.apache.qpid.protonj2.client.SslOptions;
 import org.apache.qpid.protonj2.client.TransportOptions;
 import org.slf4j.Logger;
@@ -49,7 +51,6 @@ import io.netty.channel.ChannelOption;
 import io.netty.channel.ChannelOutboundHandlerAdapter;
 import io.netty.channel.ChannelPromise;
 import io.netty.channel.EventLoopGroup;
-import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpRequest;
@@ -93,6 +94,7 @@ public abstract class NettyServer implements AutoCloseable {
     private volatile SslHandler sslHandler;
     private volatile HandshakeComplete handshakeComplete;
     private final CountDownLatch handshakeCompletion = new CountDownLatch(1);
+    private final AtomicInteger activeChannelCount = new AtomicInteger();
     private final AtomicInteger totalConnections = new AtomicInteger();
     private final AtomicBoolean started = new AtomicBoolean();
 
@@ -150,6 +152,10 @@ public abstract class NettyServer implements AutoCloseable {
         return handshakeCompletion.await(delayMs, TimeUnit.MILLISECONDS);
     }
 
+    public int activeChannelCount() {
+        return activeChannelCount.get();
+    }
+
     public HandshakeComplete getHandshakeComplete() {
         return handshakeComplete;
     }
@@ -195,8 +201,8 @@ public abstract class NettyServer implements AutoCloseable {
         if (started.compareAndSet(false, true)) {
 
             // Configure the server.
-            bossGroup = new NioEventLoopGroup(1);
-            workerGroup = new NioEventLoopGroup();
+            bossGroup = new MultiThreadIoEventLoopGroup(1, NioIoHandler.newFactory());
+            workerGroup = new MultiThreadIoEventLoopGroup(NioIoHandler.newFactory());
 
             ServerBootstrap server = new ServerBootstrap();
             server.group(bossGroup, workerGroup);
@@ -329,6 +335,7 @@ public abstract class NettyServer implements AutoCloseable {
 
         @Override
         public void channelActive(final ChannelHandlerContext ctx) {
+            activeChannelCount.incrementAndGet();
             LOG.info("NettyServerHandler -> New active channel: {}", ctx.channel());
             SslHandler handler = ctx.pipeline().get(SslHandler.class);
             if (handler != null) {
@@ -350,6 +357,7 @@ public abstract class NettyServer implements AutoCloseable {
 
         @Override
         public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+            activeChannelCount.decrementAndGet();
             LOG.info("NettyServerHandler: channel has gone inactive: {}", ctx.channel());
             ctx.close();
         }
