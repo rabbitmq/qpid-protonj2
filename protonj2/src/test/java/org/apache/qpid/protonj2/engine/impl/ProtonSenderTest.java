@@ -81,6 +81,7 @@ import org.apache.qpid.protonj2.types.transport.ErrorCondition;
 import org.apache.qpid.protonj2.types.transport.ReceiverSettleMode;
 import org.apache.qpid.protonj2.types.transport.Role;
 import org.apache.qpid.protonj2.types.transport.SenderSettleMode;
+import org.apache.qpid.protonj2.types.transport.SessionError;
 import org.hamcrest.Matcher;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -4475,6 +4476,70 @@ public class ProtonSenderTest extends ProtonEngineTestSupport {
 
         sender.close();
         connection.close();
+
+        peer.waitForScriptToComplete();
+
+        assertNull(failure);
+    }
+
+    @Test
+    public void testSecondAttachTriggersEngineFailure() throws Exception {
+        Engine engine = EngineFactory.PROTON.createNonSaslEngine();
+        engine.errorHandler(result -> failure = result.failureCause());
+        ProtonTestConnector peer = createTestPeer(engine);
+
+        peer.expectAMQPHeader();
+        peer.expectOpen();
+        peer.expectBegin().onChannel(0).respond();
+        peer.expectAttach().ofSender().onChannel(0).withHandle(0);
+
+        final AtomicBoolean connectionRemotelyOpened = new AtomicBoolean();
+        final AtomicBoolean sessionRemotelyOpened = new AtomicBoolean();
+        final AtomicBoolean senderRemotelyOpened = new AtomicBoolean();
+
+        final AtomicReference<Session> remoteSession = new AtomicReference<>();
+
+        Connection connection = engine.start();
+        assertNotNull(connection);
+
+        connection.openHandler(result -> {
+            connectionRemotelyOpened.set(true);
+            result.open();
+        });
+
+        connection.sessionOpenHandler(result -> {
+            remoteSession.set(result);
+            sessionRemotelyOpened.set(true);
+            result.open();
+        });
+
+        peer.remoteAMQPHeader().now();
+        peer.remoteOpen().withContainerId("test").now();
+        peer.remoteBegin().onChannel(0).now();
+
+        assertTrue(connectionRemotelyOpened.get(), "Connection remote opened event did not fire");
+        assertTrue(sessionRemotelyOpened.get(), "Session remote opened event did not fire");
+        assertNotNull(remoteSession.get(), "Connection did not create a local session for remote open");
+
+        remoteSession.get().senderOpenHandler(result -> {
+            senderRemotelyOpened.set(true);
+            result.open();
+        });
+
+        peer.remoteAttach().ofReceiver()
+                           .withHandle(0)
+                           .onChannel(0).now();
+
+        peer.waitForScriptToComplete();
+
+        assertTrue(senderRemotelyOpened.get(), "Sender remote opened event did not fire");
+
+        peer.expectEnd().withError(SessionError.HANDLE_IN_USE.toString(),
+            "Attach received with handle that is already in use");
+
+        peer.remoteAttach().ofReceiver()
+                           .withHandle(0)
+                           .onChannel(0).now();
 
         peer.waitForScriptToComplete();
 

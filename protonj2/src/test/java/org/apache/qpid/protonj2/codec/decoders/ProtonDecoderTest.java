@@ -26,6 +26,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.IOException;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 
 import org.apache.qpid.protonj2.buffer.ProtonBuffer;
@@ -35,6 +37,8 @@ import org.apache.qpid.protonj2.codec.DecodeEOFException;
 import org.apache.qpid.protonj2.codec.DecodeException;
 import org.apache.qpid.protonj2.codec.DecoderState;
 import org.apache.qpid.protonj2.codec.EncodingCodes;
+import org.apache.qpid.protonj2.codec.TypeDecoder;
+import org.apache.qpid.protonj2.types.Symbol;
 import org.apache.qpid.protonj2.types.UnknownDescribedType;
 import org.apache.qpid.protonj2.types.UnsignedLong;
 import org.junit.jupiter.api.Test;
@@ -93,11 +97,7 @@ public class ProtonDecoderTest extends CodecTestSupport {
         buffer.writeLong(value.getMostSignificantBits());
         buffer.writeLong(value.getLeastSignificantBits());
 
-        try {
-            decoder.readObject(buffer, decoderState, String.class);
-            fail("Should not allow for conversion to String type");
-        } catch (ClassCastException cce) {
-        }
+        assertThrows(DecodeException.class, () -> decoder.readObject(buffer, decoderState, String.class));
     }
 
     @Test
@@ -136,10 +136,7 @@ public class ProtonDecoderTest extends CodecTestSupport {
         buffer.writeLong(value.getMostSignificantBits());
         buffer.writeLong(value.getLeastSignificantBits());
 
-        try {
-            decoder.readMultiple(buffer, decoderState, String.class);
-            fail("Should not be able to convert to wrong resulting array type");
-        } catch (ClassCastException cce) {}
+        assertThrows(DecodeException.class, () -> decoder.readMultiple(buffer, decoderState, String.class));
     }
 
     @Test
@@ -150,10 +147,7 @@ public class ProtonDecoderTest extends CodecTestSupport {
 
         encoder.writeArray(buffer, encoderState, value);
 
-        try {
-            decoder.readMultiple(buffer, decoderState, String.class);
-            fail("Should not be able to convert to wrong resulting array type");
-        } catch (ClassCastException cce) {}
+        assertThrows(DecodeException.class, () -> decoder.readMultiple(buffer, decoderState, String.class));
     }
 
     @Test
@@ -288,5 +282,172 @@ public class ProtonDecoderTest extends CodecTestSupport {
 
         assertNotNull(((ProtonDecoderState) decoderState).getStringDecoder());
         assertThrows(DecodeException.class, () -> decoder.readString(buffer, decoderState));
+    }
+
+    @Test
+    public void testDecodeUnknownDescribedTypeFailsWhenInSASLMode() throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+        ProtonDecoder decoder = ProtonDecoderFactory.createSasl();
+        final ProtonDecoderState state = decoder.newDecoderState();
+
+        final UUID value = UUID.randomUUID();
+
+        buffer.writeByte(EncodingCodes.DESCRIBED_TYPE_INDICATOR);
+        buffer.writeByte(EncodingCodes.SMALLULONG);
+        buffer.writeByte((byte) 255);
+        buffer.writeByte(EncodingCodes.UUID);
+        buffer.writeLong(value.getMostSignificantBits());
+        buffer.writeLong(value.getLeastSignificantBits());
+
+        assertThrows(DecodeException.class, () -> decoder.readObject(buffer, state));
+    }
+
+    @Test
+    public void testDecodeUnknownDescribedTypeWithRestrictedDescriptorFailsWhenInSASLMode() throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+        ProtonDecoder decoder = ProtonDecoderFactory.createSasl();
+        final ProtonDecoderState state = decoder.newDecoderState();
+
+        final UUID value = UUID.randomUUID();
+
+        buffer.writeByte(EncodingCodes.DESCRIBED_TYPE_INDICATOR);
+        buffer.writeByte(EncodingCodes.SMALLUINT);
+        buffer.writeByte((byte) 255);
+        buffer.writeByte(EncodingCodes.UUID);
+        buffer.writeLong(value.getMostSignificantBits());
+        buffer.writeLong(value.getLeastSignificantBits());
+
+        assertThrows(DecodeException.class, () -> decoder.readObject(buffer, state));
+    }
+
+    @Test
+    public void testLargeSymbolDescriptorsAreNotPutInUnknownTypeCache() throws IOException {
+        final ProtonDecoder decoder = ProtonDecoderFactory.create();
+        final ProtonDecoderState state = decoder.newDecoderState();
+        final ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        final int descriptorLength = ProtonDecoder.UNKNOWN_DESCRIBED_TYPE_DESCRIPTOR_SIZE_LIMIT + 1;
+        final UUID value = UUID.randomUUID();
+
+        for (int i = 0; i < ProtonDecoder.UNKNOWN_DESCRIBED_TYPES_CACHE_LIMIT; ++i) {
+            buffer.writeByte(EncodingCodes.DESCRIBED_TYPE_INDICATOR);
+            buffer.writeByte(EncodingCodes.SYM8);
+            buffer.writeByte((byte) descriptorLength);
+            for (int j = 0; j < descriptorLength; ++j) {
+                buffer.writeByte((byte) random.nextInt(127));
+            }
+            buffer.writeByte(EncodingCodes.UUID);
+            buffer.writeLong(value.getMostSignificantBits());
+            buffer.writeLong(value.getLeastSignificantBits());
+        }
+
+        Set<TypeDecoder<?>> typeDecoders = new HashSet<>();
+
+        for (int i = 0; i < ProtonDecoder.UNKNOWN_DESCRIBED_TYPES_CACHE_LIMIT; ++i) {
+            TypeDecoder<?> typeDecoder = decoder.readNextTypeDecoder(buffer, state);
+            assertTrue(typeDecoder instanceof UnknownDescribedTypeDecoder);
+            assertTrue(typeDecoders.add(typeDecoder));
+            UnknownDescribedType result = (UnknownDescribedType) typeDecoder.readValue(buffer, state);
+            assertTrue(result.getDescriptor() instanceof Symbol);
+            assertTrue(result.getDescribed() instanceof UUID);
+        }
+
+        assertEquals(ProtonDecoder.UNKNOWN_DESCRIBED_TYPES_CACHE_LIMIT, typeDecoders.size());
+    }
+
+    @Test
+    public void testReadObjectArray8FailsBeforeDecodingContentsIfEncodingDoesNotMatchFilter() throws IOException {
+        testReadObjectFailsBeforeDecodingContentsIfEncodingDoesNotMatchFilter(EncodingCodes.ARRAY8);
+    }
+
+    @Test
+    public void testReadObjectArray32FailsBeforeDecodingContentsIfEncodingDoesNotMatchFilter() throws IOException {
+        testReadObjectFailsBeforeDecodingContentsIfEncodingDoesNotMatchFilter(EncodingCodes.ARRAY32);
+    }
+
+    private void testReadObjectFailsBeforeDecodingContentsIfEncodingDoesNotMatchFilter(byte arrayType) throws IOException {
+        final ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        if (EncodingCodes.ARRAY32 == arrayType) {
+            buffer.writeByte(EncodingCodes.ARRAY32);
+            buffer.writeInt(8); // Size
+            buffer.writeInt(3);  // Count
+        } else {
+            buffer.writeByte(EncodingCodes.ARRAY8);
+            buffer.writeByte((byte) 5);
+            buffer.writeByte((byte) 3);
+        }
+
+        buffer.writeByte(EncodingCodes.BYTE);
+        buffer.writeByte((byte) 1);
+        buffer.writeByte((byte) 2);
+        buffer.writeByte((byte) 3);
+
+        assertThrows(DecodeException.class, () -> decoder.readObject(buffer, decoderState, Symbol.class));
+
+        assertTrue(buffer.isReadable()); // Should not have read array contents
+    }
+
+    @Test
+    public void testReadMultipleArray8FailsBeforeDecodingContentsIfEncodingDoesNotMatchFilter() throws IOException {
+        testReadMultipleFailsBeforeDecodingContentsIfEncodingDoesNotMatchFilter(EncodingCodes.ARRAY8);
+    }
+
+    @Test
+    public void testReadMultipleArray32FailsBeforeDecodingContentsIfEncodingDoesNotMatchFilter() throws IOException {
+        testReadMultipleFailsBeforeDecodingContentsIfEncodingDoesNotMatchFilter(EncodingCodes.ARRAY32);
+    }
+
+    private void testReadMultipleFailsBeforeDecodingContentsIfEncodingDoesNotMatchFilter(byte arrayType) throws IOException {
+        final ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        if (EncodingCodes.ARRAY32 == arrayType) {
+            buffer.writeByte(EncodingCodes.ARRAY32);
+            buffer.writeInt(8); // Size
+            buffer.writeInt(3);  // Count
+        } else {
+            buffer.writeByte(EncodingCodes.ARRAY8);
+            buffer.writeByte((byte) 5);
+            buffer.writeByte((byte) 3);
+        }
+
+        buffer.writeByte(EncodingCodes.BYTE);
+        buffer.writeByte((byte) 1);
+        buffer.writeByte((byte) 2);
+        buffer.writeByte((byte) 3);
+
+        assertThrows(DecodeException.class, () -> decoder.readMultiple(buffer, decoderState, Symbol.class));
+
+        assertTrue(buffer.isReadable()); // Should not have read array contents
+    }
+
+    @Test
+    public void testReadObjectForObjectDoesNotDecodeIfFilterDoesNotMatch() throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        final UUID value = UUID.randomUUID();
+
+        buffer.writeByte(EncodingCodes.UUID);
+        buffer.writeLong(value.getMostSignificantBits());
+        buffer.writeLong(value.getLeastSignificantBits());
+
+        assertThrows(DecodeException.class, () -> decoder.readObject(buffer, decoderState, String.class));
+
+        assertTrue(buffer.isReadable()); // Should not have read UUID contents
+    }
+
+    @Test
+    public void testReadMultipeForObjectDoesNotDecodeIfFilterDoesNotMatch() throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        final UUID value = UUID.randomUUID();
+
+        buffer.writeByte(EncodingCodes.UUID);
+        buffer.writeLong(value.getMostSignificantBits());
+        buffer.writeLong(value.getLeastSignificantBits());
+
+        assertThrows(DecodeException.class, () -> decoder.readMultiple(buffer, decoderState, String.class));
+
+        assertTrue(buffer.isReadable()); // Should not have read UUID contents
     }
 }

@@ -165,14 +165,14 @@ public class ErrorConditionTypeCodecTest extends CodecTestSupport {
 
     @Test
     public void testEqualityOfNewlyConstructed() {
-        ErrorCondition new1 = new ErrorCondition((String) null, null, null);
-        ErrorCondition new2 = new ErrorCondition((String) null, null, null);
+        ErrorCondition new1 = new ErrorCondition("test", null, null);
+        ErrorCondition new2 = new ErrorCondition("test", null, null);
         assertErrorConditionsEqual(new1, new2);
     }
 
     @Test
     public void testSameObject() {
-        ErrorCondition error = new ErrorCondition((String) null, null, null);
+        ErrorCondition error = new ErrorCondition(Symbol.valueOf("Test"), null, null);
         assertErrorConditionsEqual(error, error);
     }
 
@@ -472,6 +472,58 @@ public class ErrorConditionTypeCodecTest extends CodecTestSupport {
             buffer.writeByte(EncodingCodes.LIST8);
             buffer.writeByte((byte) 128);  // Size
             buffer.writeByte((byte) 127);  // Count
+        }
+
+        if (fromStream) {
+            InputStream stream = new ProtonBufferInputStream(buffer);
+            try {
+                streamDecoder.readObject(stream, streamDecoderState);
+                fail("Should not decode type with invalid min entries");
+            } catch (DecodeException ex) {}
+        } else {
+            try {
+                decoder.readObject(buffer, decoderState);
+                fail("Should not decode type with invalid min entries");
+            } catch (DecodeException ex) {}
+        }
+    }
+
+    @Test
+    public void testDecodeWithoutAConditionTriggersDecodeExceptionList8() throws IOException {
+        doTestDecodeWithoutAConditionTriggersDecodeException(EncodingCodes.LIST8, false);
+    }
+
+    @Test
+    public void testDecodeWithoutAConditionTriggersDecodeExceptionList32() throws IOException {
+        doTestDecodeWithoutAConditionTriggersDecodeException(EncodingCodes.LIST32, false);
+    }
+
+    @Test
+    public void testDecodeWithoutAConditionTriggersDecodeExceptionList8FS() throws IOException {
+        doTestDecodeWithoutAConditionTriggersDecodeException(EncodingCodes.LIST8, true);
+    }
+
+    @Test
+    public void testDecodeWithoutAConditionTriggersDecodeExceptionList32FS() throws IOException {
+        doTestDecodeWithoutAConditionTriggersDecodeException(EncodingCodes.LIST32, true);
+    }
+
+    private void doTestDecodeWithoutAConditionTriggersDecodeException(byte listType, boolean fromStream) throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        buffer.writeByte((byte) 0); // Described Type Indicator
+        buffer.writeByte(EncodingCodes.SMALLULONG);
+        buffer.writeByte(ErrorCondition.DESCRIPTOR_CODE.byteValue());
+        if (listType == EncodingCodes.LIST32) {
+            buffer.writeByte(EncodingCodes.LIST32);
+            buffer.writeInt((byte) 5);  // Size
+            buffer.writeInt((byte) 1);  // Count
+            buffer.writeByte(EncodingCodes.NULL);
+        } else if (listType == EncodingCodes.LIST8) {
+            buffer.writeByte(EncodingCodes.LIST8);
+            buffer.writeByte((byte) 2);  // Size
+            buffer.writeByte((byte) 1);  // Count
+            buffer.writeByte(EncodingCodes.NULL);
         }
 
         if (fromStream) {

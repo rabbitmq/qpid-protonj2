@@ -19,6 +19,8 @@ package org.apache.qpid.protonj2.codec.security;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -90,7 +92,7 @@ public class SaslInitTypeCodecTest extends CodecTestSupport {
         ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
 
         SaslInit input = new SaslInit();
-        input.setMechanism(Symbol.valueOf("ANONYMOUS"));
+        input.setMechanism(Symbol.getSASLSymbol("ANONYMOUS"));
 
         encoder.writeObject(buffer, encoderState, input);
 
@@ -102,7 +104,8 @@ public class SaslInitTypeCodecTest extends CodecTestSupport {
             result = (SaslInit) decoder.readObject(buffer, decoderState);
         }
 
-        assertEquals(Symbol.valueOf("ANONYMOUS"), result.getMechanism());
+        assertEquals(Symbol.getSASLSymbol("ANONYMOUS"), result.getMechanism());
+        assertSame(Symbol.getSASLSymbol("ANONYMOUS"), result.getMechanism());
         assertNull(result.getHostname());
         assertNull(result.getInitialResponse());
     }
@@ -123,7 +126,7 @@ public class SaslInitTypeCodecTest extends CodecTestSupport {
         byte[] initialResponse = new byte[] { 1, 2, 3, 4 };
 
         SaslInit input = new SaslInit();
-        input.setMechanism(Symbol.valueOf("ANONYMOUS"));
+        input.setMechanism(Symbol.getSASLSymbol("ANONYMOUS"));
         input.setInitialResponse(new Binary(initialResponse));
 
         encoder.writeObject(buffer, encoderState, input);
@@ -136,7 +139,8 @@ public class SaslInitTypeCodecTest extends CodecTestSupport {
             result = (SaslInit) decoder.readObject(buffer, decoderState);
         }
 
-        assertEquals(Symbol.valueOf("ANONYMOUS"), result.getMechanism());
+        assertEquals(Symbol.getSASLSymbol("ANONYMOUS"), result.getMechanism());
+        assertSame(Symbol.getSASLSymbol("ANONYMOUS"), result.getMechanism());
         assertNull(result.getHostname());
         assertEquals(ProtonBufferAllocator.defaultAllocator().copy(initialResponse), result.getInitialResponse());
     }
@@ -157,7 +161,7 @@ public class SaslInitTypeCodecTest extends CodecTestSupport {
         byte[] initialResponse = new byte[] { 1, 2, 3, 4 };
 
         SaslInit input = new SaslInit();
-        input.setMechanism(Symbol.valueOf("ANONYMOUS"));
+        input.setMechanism(Symbol.getSASLSymbol("ANONYMOUS"));
 
         // Ensure that a null is handled without NPE and that it does indeed clear old value.
         input.setInitialResponse(new Binary(initialResponse));
@@ -173,7 +177,8 @@ public class SaslInitTypeCodecTest extends CodecTestSupport {
             result = (SaslInit) decoder.readObject(buffer, decoderState);
         }
 
-        assertEquals(Symbol.valueOf("ANONYMOUS"), result.getMechanism());
+        assertEquals(Symbol.getSASLSymbol("ANONYMOUS"), result.getMechanism());
+        assertSame(Symbol.getSASLSymbol("ANONYMOUS"), result.getMechanism());
         assertNull(result.getHostname());
         assertNull(result.getInitialResponse());
     }
@@ -192,7 +197,7 @@ public class SaslInitTypeCodecTest extends CodecTestSupport {
         ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
 
         SaslInit input = new SaslInit();
-        input.setMechanism(Symbol.valueOf("ANONYMOUS"));
+        input.setMechanism(Symbol.getSASLSymbol("ANONYMOUS"));
         input.setHostname("test");
 
         encoder.writeObject(buffer, encoderState, input);
@@ -205,7 +210,7 @@ public class SaslInitTypeCodecTest extends CodecTestSupport {
             result = (SaslInit) decoder.readObject(buffer, decoderState);
         }
 
-        assertEquals(Symbol.valueOf("ANONYMOUS"), result.getMechanism());
+        assertEquals(Symbol.getSASLSymbol("ANONYMOUS"), result.getMechanism());
         assertEquals("test", result.getHostname());
         assertNull(result.getInitialResponse());
     }
@@ -228,7 +233,7 @@ public class SaslInitTypeCodecTest extends CodecTestSupport {
         SaslInit input = new SaslInit();
         input.setInitialResponse(new Binary(initialResponse));
         input.setHostname("test");
-        input.setMechanism(Symbol.valueOf("ANONYMOUS"));
+        input.setMechanism(Symbol.getSASLSymbol("ANONYMOUS"));
 
         encoder.writeObject(buffer, encoderState, input);
 
@@ -241,7 +246,7 @@ public class SaslInitTypeCodecTest extends CodecTestSupport {
         }
 
         assertEquals("test", result.getHostname());
-        assertEquals(Symbol.valueOf("ANONYMOUS"), result.getMechanism());
+        assertEquals(Symbol.getSASLSymbol("ANONYMOUS"), result.getMechanism());
         assertEquals(ProtonBufferAllocator.defaultAllocator().copy(initialResponse), result.getInitialResponse());
     }
 
@@ -261,6 +266,7 @@ public class SaslInitTypeCodecTest extends CodecTestSupport {
         SaslInit init = new SaslInit();
 
         init.setInitialResponse(new Binary(new byte[] {0}));
+        init.setMechanism(Symbol.getSASLSymbol("PLAIN"));
         init.setHostname("skip");
 
         for (int i = 0; i < 10; ++i) {
@@ -269,7 +275,7 @@ public class SaslInitTypeCodecTest extends CodecTestSupport {
 
         init.setInitialResponse(new Binary(new byte[] {1, 2}));
         init.setHostname("localhost");
-        init.setMechanism(Symbol.valueOf("PLAIN"));
+        init.setMechanism(Symbol.getSASLSymbol("PLAIN"));
 
         encoder.writeObject(buffer, encoderState, init);
 
@@ -305,7 +311,8 @@ public class SaslInitTypeCodecTest extends CodecTestSupport {
         SaslInit value = result;
         assertEquals(ProtonBufferAllocator.defaultAllocator().copy(new byte[] {1, 2}), value.getInitialResponse());
         assertEquals("localhost", value.getHostname());
-        assertEquals(Symbol.valueOf("PLAIN"), value.getMechanism());
+        assertEquals(Symbol.getSASLSymbol("PLAIN"), value.getMechanism());
+        assertSame(Symbol.getSASLSymbol("PLAIN"), value.getMechanism());
     }
 
     @Test
@@ -433,9 +440,9 @@ public class SaslInitTypeCodecTest extends CodecTestSupport {
         array[1] = new SaslInit();
         array[2] = new SaslInit();
 
-        array[0].setInitialResponse(new Binary(new byte[] {0})).setHostname("test-1").setMechanism(Symbol.valueOf("ANONYMOUS"));
-        array[1].setInitialResponse(new Binary(new byte[] {1})).setHostname("test-2").setMechanism(Symbol.valueOf("PLAIN"));
-        array[2].setInitialResponse(new Binary(new byte[] {2})).setHostname("test-3").setMechanism(Symbol.valueOf("EXTERNAL"));
+        array[0].setInitialResponse(new Binary(new byte[] {0})).setHostname("test-1").setMechanism(Symbol.getSASLSymbol("ANONYMOUS"));
+        array[1].setInitialResponse(new Binary(new byte[] {1})).setHostname("test-2").setMechanism(Symbol.getSASLSymbol("PLAIN"));
+        array[2].setInitialResponse(new Binary(new byte[] {2})).setHostname("test-3").setMechanism(Symbol.getSASLSymbol("EXTERNAL"));
 
         encoder.writeObject(buffer, encoderState, array);
 
@@ -560,6 +567,98 @@ public class SaslInitTypeCodecTest extends CodecTestSupport {
                 decoder.readObject(buffer, decoderState);
                 fail("Should not decode type with invalid min entries");
             } catch (DecodeException ex) {}
+        }
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfValuesSizeIsToLargeArray8() throws IOException {
+        doTestDecodeFailsWhenArrayOfValuesSizeIsToLarge(EncodingCodes.ARRAY8, false);
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfValuesSizeIsToLargeArray32() throws IOException {
+        doTestDecodeFailsWhenArrayOfValuesSizeIsToLarge(EncodingCodes.ARRAY32, false);
+    }
+
+    private void doTestDecodeFailsWhenArrayOfValuesSizeIsToLarge(byte arrayType, boolean fromStream) throws IOException {
+        ProtonBuffer buffer2 = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        if (arrayType == EncodingCodes.ARRAY32) {
+            buffer2.writeByte(EncodingCodes.ARRAY32);
+            buffer2.writeInt(13);  // Size
+            buffer2.writeInt(2);   // Count
+        } else {
+            buffer2.writeByte(EncodingCodes.ARRAY8);
+            buffer2.writeByte((byte) 10);  // Size
+            buffer2.writeByte((byte) 2);  // Count
+        }
+        buffer2.writeByte((byte) 0); // Described Type Indicator
+        buffer2.writeByte(EncodingCodes.SMALLULONG);
+        buffer2.writeByte(SaslInit.DESCRIPTOR_CODE.byteValue());
+        buffer2.writeByte(EncodingCodes.LIST8);
+        buffer2.writeByte((byte) 1);  // Size
+        buffer2.writeByte((byte) 0);  // Count
+        buffer2.writeByte((byte) 1);  // Size
+        buffer2.writeByte((byte) 0);  // Count
+
+        if (fromStream) {
+            InputStream stream = new ProtonBufferInputStream(buffer2);
+            StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
+            assertEquals(Object.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.readValue(stream, streamDecoderState));
+        } else {
+            TypeDecoder<?> typeDecoder = decoder.readNextTypeDecoder(buffer2, decoderState);
+            assertEquals(Object.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.readValue(buffer2, decoderState));
+        }
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfTypeWithList0EncodingsArray8() throws IOException {
+        doTestDecodeFailsWhenArrayOfTypeWithList0Encodings(EncodingCodes.ARRAY8, false);
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfTypeWithList0EncodingsArray32() throws IOException {
+        doTestDecodeFailsWhenArrayOfTypeWithList0Encodings(EncodingCodes.ARRAY32, false);
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfTypeWithList0EncodingsArray8FS() throws IOException {
+        doTestDecodeFailsWhenArrayOfTypeWithList0Encodings(EncodingCodes.ARRAY8, true);
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfTypeWithList0EncodingsArray32FS() throws IOException {
+        doTestDecodeFailsWhenArrayOfTypeWithList0Encodings(EncodingCodes.ARRAY32, true);
+    }
+
+    private void doTestDecodeFailsWhenArrayOfTypeWithList0Encodings(byte arrayType, boolean fromStream) throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        if (arrayType == EncodingCodes.ARRAY32) {
+            buffer.writeByte(EncodingCodes.ARRAY32);
+            buffer.writeInt(8);  // Size
+            buffer.writeInt(2);  // Count
+        } else {
+            buffer.writeByte(EncodingCodes.ARRAY8);
+            buffer.writeByte((byte) 5);  // Size
+            buffer.writeByte((byte) 2);  // Count
+        }
+        buffer.writeByte((byte) 0); // Described Type Indicator
+        buffer.writeByte(EncodingCodes.SMALLULONG);
+        buffer.writeByte(SaslInit.DESCRIPTOR_CODE.byteValue());
+        buffer.writeByte(EncodingCodes.LIST0);
+
+        if (fromStream) {
+            InputStream stream = new ProtonBufferInputStream(buffer.copy(true));
+            StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
+            assertEquals(Object.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.readValue(stream, streamDecoderState));
+        } else {
+            TypeDecoder<?> typeDecoder = decoder.readNextTypeDecoder(buffer, decoderState);
+            assertEquals(Object.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.readValue(buffer, decoderState));
         }
     }
 }

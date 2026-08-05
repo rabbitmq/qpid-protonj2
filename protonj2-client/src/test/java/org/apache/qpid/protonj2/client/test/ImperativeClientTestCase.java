@@ -19,12 +19,18 @@
 package org.apache.qpid.protonj2.client.test;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.apache.qpid.protonj2.buffer.ProtonBuffer;
 import org.apache.qpid.protonj2.buffer.ProtonBufferAllocator;
 import org.apache.qpid.protonj2.codec.CodecFactory;
 import org.apache.qpid.protonj2.codec.Encoder;
+import org.apache.qpid.protonj2.codec.EncodingCodes;
+import org.apache.qpid.protonj2.types.UnknownDescribedType;
+import org.apache.qpid.protonj2.types.UnsignedByte;
+import org.apache.qpid.protonj2.types.UnsignedLong;
+import org.apache.qpid.protonj2.types.messaging.AmqpValue;
 import org.apache.qpid.protonj2.types.messaging.Data;
 import org.apache.qpid.protonj2.types.messaging.Section;
 import org.junit.jupiter.api.AfterEach;
@@ -131,6 +137,47 @@ public abstract class ImperativeClientTestCase {
         }
         byte[] result = new byte[buffer.getReadableBytes()];
         buffer.copyInto(buffer.getReadOffset(), result, 0, result.length);
+        return result;
+    }
+
+    protected byte[] createNestedEncodedMessage(int depth) {
+        Encoder encoder = CodecFactory.getEncoder();
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+        encoder.writeObject(buffer, encoder.newEncoderState(), new AmqpValue<>(createNode(depth, 0)));
+        byte[] result = new byte[buffer.getReadableBytes()];
+        buffer.copyInto(buffer.getReadOffset(), result, 0, result.length);
+        return result;
+    }
+
+    private UnknownDescribedType createNode(int limit, int depth) {
+        final UnsignedLong DESCRIPTOR_CODE = UnsignedLong.valueOf(0xAA00468C00000003L);
+
+        if (++depth > limit) {
+            return new UnknownDescribedType(DESCRIPTOR_CODE, null);
+        } else {
+            return new UnknownDescribedType(DESCRIPTOR_CODE, List.of(createNode(limit, depth)));
+        }
+    }
+
+    protected byte[] createEncodedMessageWithZeroWidthArray(int length) {
+        if (length > UnsignedByte.MAX_VALUE.intValue()) {
+            throw new IllegalArgumentException("Length must be within the range of an unsigned byte");
+        }
+
+        final ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        buffer.writeByte((byte) 0); // Described Type Indicator - 1
+        buffer.writeByte(EncodingCodes.SMALLULONG);
+        buffer.writeByte(AmqpValue.DESCRIPTOR_CODE.byteValue());
+        buffer.writeByte(EncodingCodes.ARRAY8);
+        buffer.writeByte((byte) 2);
+        buffer.writeByte((byte) length);
+        buffer.writeByte(EncodingCodes.BOOLEAN_TRUE);
+
+        final byte[] result = new byte[buffer.getReadableBytes()];
+
+        buffer.copyInto(buffer.getReadOffset(), result, 0, result.length);
+
         return result;
     }
 }

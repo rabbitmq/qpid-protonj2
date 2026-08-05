@@ -19,6 +19,7 @@ package org.apache.qpid.protonj2.codec.primitives;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -158,6 +159,11 @@ public class StringTypeCodecTest extends CodecTestSupport {
     }
 
     @Test
+    public void testEncodeLargeStringPlusUnicodeString() throws IOException {
+        doTestEncodeDecode(LARGE_STRING_VALUE + UNICODE_STRING_VALUE, false);
+    }
+
+    @Test
     public void testEncodeEmptyString() throws IOException {
         doTestEncodeDecode("", false);
     }
@@ -185,6 +191,11 @@ public class StringTypeCodecTest extends CodecTestSupport {
     @Test
     public void testEncodeUnicodeStringFS() throws IOException {
         doTestEncodeDecode(UNICODE_STRING_VALUE, true);
+    }
+
+    @Test
+    public void testEncodeLargeStringPlusUnicodeStringFS() throws IOException {
+        doTestEncodeDecode(LARGE_STRING_VALUE + UNICODE_STRING_VALUE, true);
     }
 
     @Test
@@ -772,5 +783,96 @@ public class StringTypeCodecTest extends CodecTestSupport {
             typeDecoder = decoder.readNextTypeDecoder(buffer, decoderState);
             assertEquals(16, typeDecoder.readSize(buffer, decoderState));
         }
+    }
+
+    @Test
+    public void testStreamDecodeFailsWhenEncodedLengthExceedsConfigurationSym8() throws IOException {
+        doTestStreamDecodeFailsWhenEncodedLengthExceedsConfiguration(true);
+    }
+
+    @Test
+    public void testStreamDecodeFailsWhenEncodedLengthExceedsConfigurationSym32() throws IOException {
+        doTestStreamDecodeFailsWhenEncodedLengthExceedsConfiguration(false);
+    }
+
+    private void doTestStreamDecodeFailsWhenEncodedLengthExceedsConfiguration(boolean smallEncoding) throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        final byte[] payload = new byte[256];
+
+        streamDecoderState.setMaxStringSize(24);
+
+        if (smallEncoding) {
+            buffer.writeByte(EncodingCodes.STR8);
+            buffer.writeByte((byte) 127);
+        } else {
+            buffer.writeByte(EncodingCodes.STR32);
+            buffer.writeInt(127);
+        }
+        buffer.writeBytes(payload);
+
+        InputStream stream = new ProtonBufferInputStream(buffer);
+        StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
+        assertThrows(DecodeException.class, () -> typeDecoder.readValue(stream, streamDecoderState));
+    }
+
+    @Test
+    public void testStreamSkipValueFailsWhenEncodedLengthExceedsConfigurationStr8() throws IOException {
+        doTestStreamSkipValueFailsWhenEncodedLengthExceedsConfiguration(true);
+    }
+
+    @Test
+    public void testStreamSkipValueFailsWhenEncodedLengthExceedsConfigurationStr32() throws IOException {
+        doTestStreamSkipValueFailsWhenEncodedLengthExceedsConfiguration(false);
+    }
+
+    private void doTestStreamSkipValueFailsWhenEncodedLengthExceedsConfiguration(boolean smallEncoding) throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        final byte[] payload = new byte[256];
+
+        streamDecoderState.setMaxStringSize(24);
+
+        if (smallEncoding) {
+            buffer.writeByte(EncodingCodes.STR8);
+            buffer.writeByte((byte) 127);
+        } else {
+            buffer.writeByte(EncodingCodes.STR32);
+            buffer.writeInt(127);
+        }
+        buffer.writeBytes(payload);
+
+        InputStream stream = new ProtonBufferInputStream(buffer);
+        StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
+        assertThrows(DecodeException.class, () -> typeDecoder.skipValue(stream, streamDecoderState));
+    }
+
+    @Test
+    public void testDecoderSkipValueFailsWhenEncodedLengthExceedsRemainingStr8() throws IOException {
+        doTestDecoderSkipValueFailsWhenEncodedLengthExceedsRemaining(true);
+    }
+
+    @Test
+    public void testDecoderSkipValueFailsWhenEncodedLengthExceedsRemainingStr32() throws IOException {
+        doTestDecoderSkipValueFailsWhenEncodedLengthExceedsRemaining(false);
+    }
+
+    private void doTestDecoderSkipValueFailsWhenEncodedLengthExceedsRemaining(boolean smallEncoding) throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        final byte[] payload = new byte[127];
+
+        if (smallEncoding) {
+            buffer.writeByte(EncodingCodes.STR8);
+            buffer.writeByte((byte) 128);
+        } else {
+            buffer.writeByte(EncodingCodes.STR32);
+            buffer.writeInt(128);
+        }
+        buffer.writeBytes(payload);
+
+        TypeDecoder<?> typeDecoder = decoder.readNextTypeDecoder(buffer, decoderState);
+        assertEquals(String.class, typeDecoder.getTypeClass());
+        assertThrows(DecodeException.class, () -> typeDecoder.skipValue(buffer, decoderState));
     }
 }

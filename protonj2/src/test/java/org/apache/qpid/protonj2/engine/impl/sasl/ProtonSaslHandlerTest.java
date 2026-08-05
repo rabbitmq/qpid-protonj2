@@ -349,7 +349,7 @@ public class ProtonSaslHandlerTest {
                     saslHeaderRead.set(true);
                 }
 
-                context.sendMechanisms(new Symbol[] { Symbol.valueOf("ANONYMOUS") });
+                context.sendMechanisms(new Symbol[] { Symbol.getSASLSymbol("ANONYMOUS") });
             }
 
             @Override
@@ -376,14 +376,14 @@ public class ProtonSaslHandlerTest {
 
         SaslInit clientInit = new SaslInit();
         clientInit.setHostname("HOST-NAME");
-        clientInit.setMechanism(Symbol.valueOf("ANONYMOUS"));
+        clientInit.setMechanism(Symbol.getSASLSymbol("ANONYMOUS"));
         clientInit.setInitialResponse(new Binary(new byte[0]));
 
         // Check for Initial Response processing
         engine.pipeline().fireRead(new SASLEnvelope(clientInit));
 
         assertEquals("HOST-NAME", clientHostname.get());
-        assertEquals(Symbol.valueOf("ANONYMOUS"), clientMechanism.get());
+        assertEquals(Symbol.getSASLSymbol("ANONYMOUS"), clientMechanism.get());
         assertTrue(emptyResponse.get(), "Response should be an empty byte array");
 
         List<PerformativeEnvelope<?>> frames = testHandler.getFramesWritten();
@@ -406,7 +406,7 @@ public class ProtonSaslHandlerTest {
                     assertEquals(SaslPerformative.SaslPerformativeType.MECHANISMS, saslFrame.getBody().getPerformativeType());
                     SaslMechanisms mechanisms = (SaslMechanisms) saslFrame.getBody();
                     assertEquals(1, mechanisms.getSaslServerMechanisms().length);
-                    assertEquals(Symbol.valueOf("ANONYMOUS"), mechanisms.getSaslServerMechanisms()[0]);
+                    assertEquals(Symbol.getSASLSymbol("ANONYMOUS"), mechanisms.getSaslServerMechanisms()[0]);
                     break;
                 case 2:
                     assertTrue(frame.getFrameType() == SASLEnvelope.SASL_FRAME_TYPE);
@@ -440,7 +440,7 @@ public class ProtonSaslHandlerTest {
                     saslHeaderRead.set(true);
                 }
 
-                context.sendMechanisms(new Symbol[] { Symbol.valueOf("ANONYMOUS") });
+                context.sendMechanisms(new Symbol[] { Symbol.getSASLSymbol("ANONYMOUS") });
             }
 
             @Override
@@ -467,14 +467,14 @@ public class ProtonSaslHandlerTest {
 
         SaslInit clientInit = new SaslInit();
         clientInit.setHostname("HOST-NAME");
-        clientInit.setMechanism(Symbol.valueOf("ANONYMOUS"));
+        clientInit.setMechanism(Symbol.getSASLSymbol("ANONYMOUS"));
         clientInit.setInitialResponse(new Binary(new byte[0]));
 
         // Check for Initial Response processing
         engine.pipeline().fireRead(new SASLEnvelope(clientInit));
 
         assertEquals("HOST-NAME", clientHostname.get());
-        assertEquals(Symbol.valueOf("ANONYMOUS"), clientMechanism.get());
+        assertEquals(Symbol.getSASLSymbol("ANONYMOUS"), clientMechanism.get());
         assertTrue(emptyResponse.get(), "Response should be an empty byte array");
 
         List<PerformativeEnvelope<?>> frames = testHandler.getFramesWritten();
@@ -504,7 +504,7 @@ public class ProtonSaslHandlerTest {
 
         SaslInit clientInit = new SaslInit();
         clientInit.setHostname("HOST-NAME");
-        clientInit.setMechanism(Symbol.valueOf("ANONYMOUS"));
+        clientInit.setMechanism(Symbol.getSASLSymbol("ANONYMOUS"));
         clientInit.setInitialResponse(new Binary(new byte[0]));
 
         // Check for Initial Response processing
@@ -532,7 +532,7 @@ public class ProtonSaslHandlerTest {
                     assertEquals(SaslPerformative.SaslPerformativeType.MECHANISMS, saslFrame.getBody().getPerformativeType());
                     SaslMechanisms mechanisms = (SaslMechanisms) saslFrame.getBody();
                     assertEquals(1, mechanisms.getSaslServerMechanisms().length);
-                    assertEquals(Symbol.valueOf("PLAIN"), mechanisms.getSaslServerMechanisms()[0]);
+                    assertEquals(Symbol.getSASLSymbol("PLAIN"), mechanisms.getSaslServerMechanisms()[0]);
                     break;
                 case 2:
                     assertTrue(frame.getFrameType() == SASLEnvelope.SASL_FRAME_TYPE);
@@ -570,7 +570,7 @@ public class ProtonSaslHandlerTest {
                     saslHeaderRead.set(true);
                 }
 
-                context.sendMechanisms(new Symbol[] { Symbol.valueOf("ANONYMOUS") });
+                context.sendMechanisms(new Symbol[] { Symbol.getSASLSymbol("ANONYMOUS") });
             }
 
             @Override
@@ -592,14 +592,14 @@ public class ProtonSaslHandlerTest {
 
         SaslInit clientInit = new SaslInit();
         clientInit.setHostname("HOST-NAME");
-        clientInit.setMechanism(Symbol.valueOf("ANONYMOUS"));
+        clientInit.setMechanism(Symbol.getSASLSymbol("ANONYMOUS"));
         clientInit.setInitialResponse(new Binary(new byte[0]));
 
         // Check for Initial Response processing
         engine.pipeline().fireRead(new SASLEnvelope(clientInit));
 
         assertEquals("HOST-NAME", clientHostname.get());
-        assertEquals(Symbol.valueOf("ANONYMOUS"), clientMechanism.get());
+        assertEquals(Symbol.getSASLSymbol("ANONYMOUS"), clientMechanism.get());
 
         List<PerformativeEnvelope<?>> frames = testHandler.getFramesWritten();
 
@@ -627,7 +627,7 @@ public class ProtonSaslHandlerTest {
                     assertEquals(SaslPerformative.SaslPerformativeType.MECHANISMS, saslFrame.getBody().getPerformativeType());
                     SaslMechanisms mechanisms = (SaslMechanisms) saslFrame.getBody();
                     assertEquals(1, mechanisms.getSaslServerMechanisms().length);
-                    assertEquals(Symbol.valueOf("ANONYMOUS"), mechanisms.getSaslServerMechanisms()[0]);
+                    assertEquals(Symbol.getSASLSymbol("ANONYMOUS"), mechanisms.getSaslServerMechanisms()[0]);
                     break;
                 default:
                     fail("Invalid Frame read during exchange: " + frame);

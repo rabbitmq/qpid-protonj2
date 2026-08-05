@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -157,6 +158,32 @@ public class DispositionTypeCodecTest extends CodecTestSupport {
     }
 
     @Test
+    public void testCannotEncodeDispositionWithoutFirstAssigned() throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        Disposition input = new Disposition();
+
+        input.setRole(Role.RECEIVER);
+        input.setSettled(true);
+        input.setState(Accepted.getInstance());
+
+        assertThrows(EncodeException.class, () -> encoder.writeObject(buffer, encoderState, input));
+    }
+
+    @Test
+    public void testCannotEncodeDispositionWithoutRoleAssigned() throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        Disposition input = new Disposition();
+
+        input.setFirst(1);
+        input.setSettled(true);
+        input.setState(Accepted.getInstance());
+
+        assertThrows(EncodeException.class, () -> encoder.writeObject(buffer, encoderState, input));
+    }
+
+    @Test
     public void testDecodeEnforcesFirstValueRequired() throws IOException {
         doTestDecodeEnforcesFirstValueRequired(false);
     }
@@ -169,13 +196,51 @@ public class DispositionTypeCodecTest extends CodecTestSupport {
     private void doTestDecodeEnforcesFirstValueRequired(boolean fromStream) throws IOException {
         ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
 
-        Disposition input = new Disposition();
+        buffer.writeByte((byte) 0); // Described Type Indicator
+        buffer.writeByte(EncodingCodes.SMALLULONG);
+        buffer.writeByte(Disposition.DESCRIPTOR_CODE.byteValue());
+        buffer.writeByte(EncodingCodes.LIST8);
+        buffer.writeByte((byte) 2);  // Size
+        buffer.writeByte((byte) 1);  // Count
+        buffer.writeByte(EncodingCodes.BOOLEAN_TRUE);  // Role
 
-        input.setRole(Role.RECEIVER);
-        input.setSettled(true);
-        input.setState(Accepted.getInstance());
+        if (fromStream) {
+            InputStream stream = new ProtonBufferInputStream(buffer);
+            try {
+                streamDecoder.readObject(stream, streamDecoderState);
+                fail("Should not encode when no First value is set");
+            } catch (Exception ex) {
+            }
+        } else {
+            try {
+                decoder.readObject(buffer, decoderState);
+                fail("Should not encode when no First value is set");
+            } catch (Exception ex) {
+            }
+        }
+    }
 
-        encoder.writeObject(buffer, encoderState, input);
+    @Test
+    public void testDecodeEnforcesRoleValueRequired() throws IOException {
+        doTestDecodeEnforcesRoleValueRequired(false);
+    }
+
+    @Test
+    public void testDecodeEnforcesRoleValueRequiredFromStream() throws IOException {
+        doTestDecodeEnforcesRoleValueRequired(true);
+    }
+
+    private void doTestDecodeEnforcesRoleValueRequired(boolean fromStream) throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        buffer.writeByte((byte) 0); // Described Type Indicator
+        buffer.writeByte(EncodingCodes.SMALLULONG);
+        buffer.writeByte(Disposition.DESCRIPTOR_CODE.byteValue());
+        buffer.writeByte(EncodingCodes.LIST8);
+        buffer.writeByte((byte) 3);  // Size
+        buffer.writeByte((byte) 2);  // Count
+        buffer.writeByte(EncodingCodes.NULL);  // Role
+        buffer.writeByte(EncodingCodes.UINT0); // First
 
         if (fromStream) {
             InputStream stream = new ProtonBufferInputStream(buffer);

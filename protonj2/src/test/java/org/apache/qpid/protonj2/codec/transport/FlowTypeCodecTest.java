@@ -476,4 +476,94 @@ public class FlowTypeCodecTest extends CodecTestSupport {
             } catch (DecodeException ex) {}
         }
     }
+
+    @Test
+    public void testDecodeFlow() throws IOException {
+        doTestDecodeFlowSeries(1);
+    }
+
+    @Test
+    public void testDecodeSmallSeriesOfFlows() throws IOException {
+        doTestDecodeFlowSeries(SMALL_SIZE);
+    }
+
+    @Test
+    public void testDecodeLargeSeriesOfFlows() throws IOException {
+        doTestDecodeFlowSeries(LARGE_SIZE);
+    }
+
+    private void doTestDecodeFlowSeries(int size) throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        Flow flow = new Flow();
+        flow.setNextIncomingId(1);
+        flow.setIncomingWindow(2047);
+        flow.setNextOutgoingId(1);
+        flow.setOutgoingWindow(UnsignedInteger.MAX_VALUE.longValue());
+        flow.setHandle(0);
+        flow.setDeliveryCount(10);
+        flow.setLinkCredit(1000);
+
+        for (int i = 0; i < size; ++i) {
+            encoder.writeObject(buffer, encoderState, flow);
+        }
+
+        for (int i = 0; i < size; ++i) {
+            final Object result = decoder.readObject(buffer, decoderState);
+
+            assertNotNull(result);
+            assertTrue(result instanceof Flow);
+
+            Flow decoded = (Flow) result;
+
+            assertEquals(flow.getNextIncomingId(), decoded.getNextIncomingId());
+            assertEquals(flow.getIncomingWindow(), decoded.getIncomingWindow());
+            assertEquals(flow.getNextOutgoingId(), decoded.getNextOutgoingId());
+            assertEquals(flow.getOutgoingWindow(), decoded.getOutgoingWindow());
+            assertEquals(flow.getHandle(), decoded.getHandle());
+            assertEquals(flow.getDeliveryCount(), decoded.getDeliveryCount());
+            assertEquals(flow.getLinkCredit(), decoded.getLinkCredit());
+        }
+    }
+
+    @Test
+    public void testEncodeDecodeArrayOfFlows() throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        Flow flow = new Flow();
+        flow.setNextIncomingId(1);
+        flow.setIncomingWindow(2047);
+        flow.setNextOutgoingId(1);
+        flow.setOutgoingWindow(UnsignedInteger.MAX_VALUE.longValue());
+        flow.setHandle(0);
+        flow.setDeliveryCount(10);
+        flow.setLinkCredit(1000);
+
+        Flow[] flowArray = new Flow[3];
+
+        flowArray[0] = flow;
+        flowArray[1] = flow;
+        flowArray[2] = flow;
+
+        encoder.writeObject(buffer, encoderState, flowArray);
+
+        final Object result = decoder.readObject(buffer, decoderState);
+
+        assertTrue(result.getClass().isArray());
+        assertEquals(Flow.class, result.getClass().getComponentType());
+
+        Flow[] resultArray = (Flow[]) result;
+
+        for (int i = 0; i < resultArray.length; ++i) {
+            assertNotNull(resultArray[i]);
+            assertTrue(resultArray[i] instanceof Flow);
+            assertEquals(flowArray[i].getNextIncomingId(), resultArray[i].getNextIncomingId());
+            assertEquals(flowArray[i].getIncomingWindow(), resultArray[i].getIncomingWindow());
+            assertEquals(flowArray[i].getNextOutgoingId(), resultArray[i].getNextOutgoingId());
+            assertEquals(flowArray[i].getOutgoingWindow(), resultArray[i].getOutgoingWindow());
+            assertEquals(flowArray[i].getHandle(), resultArray[i].getHandle());
+            assertEquals(flowArray[i].getDeliveryCount(), resultArray[i].getDeliveryCount());
+            assertEquals(flowArray[i].getLinkCredit(), resultArray[i].getLinkCredit());
+        }
+    }
 }

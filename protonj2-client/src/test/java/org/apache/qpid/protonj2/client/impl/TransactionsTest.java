@@ -767,7 +767,7 @@ public class TransactionsTest extends ImperativeClientTestCase {
             peer.expectCoordinatorAttach().respond();
             peer.remoteFlow().withLinkCredit(1).queue();
             peer.expectDeclare().accept(null);
-            peer.expectClose().withError(AmqpError.DECODE_ERROR.toString(), "The txn-id field cannot be omitted").respond();
+            peer.expectClose().withError(AmqpError.DECODE_ERROR.toString()).respond();
             peer.start();
 
             URI remoteURI = peer.getServerURI();

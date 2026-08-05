@@ -17,6 +17,7 @@
 package org.apache.qpid.protonj2.codec.legacy;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,11 +33,14 @@ import org.apache.qpid.protonj2.types.UnsignedInteger;
 import org.apache.qpid.protonj2.types.UnsignedLong;
 import org.apache.qpid.protonj2.types.UnsignedShort;
 import org.apache.qpid.protonj2.types.messaging.Accepted;
+import org.apache.qpid.protonj2.types.messaging.ApplicationProperties;
 import org.apache.qpid.protonj2.types.messaging.DeleteOnClose;
 import org.apache.qpid.protonj2.types.messaging.DeleteOnNoLinks;
 import org.apache.qpid.protonj2.types.messaging.DeleteOnNoLinksOrMessages;
 import org.apache.qpid.protonj2.types.messaging.DeleteOnNoMessages;
+import org.apache.qpid.protonj2.types.messaging.DeliveryAnnotations;
 import org.apache.qpid.protonj2.types.messaging.LifetimePolicy;
+import org.apache.qpid.protonj2.types.messaging.MessageAnnotations;
 import org.apache.qpid.protonj2.types.messaging.Modified;
 import org.apache.qpid.protonj2.types.messaging.Outcome;
 import org.apache.qpid.protonj2.types.messaging.Received;
@@ -148,7 +152,106 @@ public abstract class CodecToLegacyType {
 
         // Security Types
 
+        // Section Types
+        if (newType instanceof ApplicationProperties) {
+            return convertToLegacyType((ApplicationProperties) newType);
+        } else if (newType instanceof MessageAnnotations) {
+            return convertToLegacyType((MessageAnnotations) newType);
+        } else if (newType instanceof DeliveryAnnotations) {
+            return convertToLegacyType((DeliveryAnnotations) newType);
+        }
+
+        if (newType.getClass().isArray()) {
+            return convertToLegacyType((Object[]) newType);
+        }
+
         return newType;
+    }
+
+    /**
+     * Convert an array of new codec types into an array of legacy types
+     *
+     * @param array
+     * 		The array of new codec types to convert into legacy types in an array.
+     *
+     * @return the array of legacy types.
+     */
+    public static Object[] convertToLegacyType(Object[] array) {
+        Object[] converted = new Object[array.length];
+
+        for (int i = 0; i < array.length; ++i) {
+            converted[i] = convertToLegacyType(array[i]);
+        }
+
+        return converted;
+    }
+
+    /**
+     * convert a new Codec type to a legacy type for encoding or other operation that requires a legacy type.
+     *
+     * @param ap
+     *      The new codec type to be converted to the legacy codec version
+     *
+     * @return the legacy version of the new type.
+     */
+    public static org.apache.qpid.proton.amqp.messaging.ApplicationProperties convertToLegacyType(ApplicationProperties ap) {
+        final Map<String, Object> map;
+
+        if (ap.getValue() != null) {
+            map = new HashMap<String, Object>(ap.getValue());
+        } else {
+            map = null;
+        }
+
+        return new org.apache.qpid.proton.amqp.messaging.ApplicationProperties(map);
+    }
+
+    /**
+     * convert a new Codec type to a legacy type for encoding or other operation that requires a legacy type.
+     *
+     * @param ma
+     *      The new codec type to be converted to the legacy codec version
+     *
+     * @return the legacy version of the new type.
+     */
+    public static org.apache.qpid.proton.amqp.messaging.MessageAnnotations convertToLegacyType(MessageAnnotations ma) {
+        final Map<org.apache.qpid.proton.amqp.Symbol, Object> map;
+
+        if (ma.getValue() != null) {
+            map = new HashMap<org.apache.qpid.proton.amqp.Symbol, Object>();
+
+            ma.getValue().forEach((k, v) -> {
+                map.put(org.apache.qpid.proton.amqp.Symbol.valueOf(k.toString()), v);
+            });
+        } else {
+            map = null;
+        }
+
+        return new org.apache.qpid.proton.amqp.messaging.MessageAnnotations(map);
+    }
+
+    /**
+     * convert a new Codec type to a legacy type for encoding or other operation that requires a legacy type.
+     *
+     * @param ma
+     *      The new codec type to be converted to the legacy codec version
+     *
+     * @return the legacy version of the new type.
+     */
+    public static org.apache.qpid.proton.amqp.messaging.DeliveryAnnotations convertToLegacyType(DeliveryAnnotations da) {
+        final Map<org.apache.qpid.proton.amqp.Symbol, Object> map;
+
+        if (da.getValue() != null) {
+            map = new HashMap<org.apache.qpid.proton.amqp.Symbol, Object>();
+
+            da.getValue().forEach((k, v) -> {
+                map.put(org.apache.qpid.proton.amqp.Symbol.valueOf(k.toString()), v);
+            });
+        } else {
+            map = null;
+        }
+
+        return new org.apache.qpid.proton.amqp.messaging.DeliveryAnnotations(map);
     }
 
     /**

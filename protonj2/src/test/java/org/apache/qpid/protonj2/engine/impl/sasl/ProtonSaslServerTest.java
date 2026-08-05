@@ -214,7 +214,7 @@ public class ProtonSaslServerTest extends ProtonEngineTestSupport {
                     throw new AssertionError("SASL context did not preserve the linked resource");
                 }
 
-                if (mechanism.equals(Symbol.valueOf("ANONYMOUS"))) {
+                if (mechanism.equals(Symbol.getSASLSymbol("ANONYMOUS"))) {
                     context.sendOutcome(SaslOutcome.SASL_OK, null);
                 } else {
                     context.sendOutcome(SaslOutcome.SASL_PERM, null);
@@ -224,7 +224,7 @@ public class ProtonSaslServerTest extends ProtonEngineTestSupport {
             @Override
             public void handleSaslHeader(SaslServerContext context, AMQPHeader header) {
                 context.setLinkedResource("ANONYMOUS");
-                context.sendMechanisms(new Symbol[] { Symbol.valueOf("ANONYMOUS") });
+                context.sendMechanisms(new Symbol[] { Symbol.getSASLSymbol("ANONYMOUS") });
             }
         };
     }
@@ -243,7 +243,7 @@ public class ProtonSaslServerTest extends ProtonEngineTestSupport {
                     throw new AssertionError("SASL context did not preserve the linked resource");
                 }
 
-                if (mechanism.equals(Symbol.valueOf("PLAIN"))) {
+                if (mechanism.equals(Symbol.getSASLSymbol("PLAIN"))) {
                     context.sendOutcome(SaslOutcome.SASL_OK, null);
                 } else {
                     context.sendOutcome(SaslOutcome.SASL_PERM, null);
@@ -253,7 +253,7 @@ public class ProtonSaslServerTest extends ProtonEngineTestSupport {
             @Override
             public void handleSaslHeader(SaslServerContext context, AMQPHeader header) {
                 context.setLinkedResource("PLAIN");
-                context.sendMechanisms(new Symbol[] { Symbol.valueOf("PLAIN") });
+                context.sendMechanisms(new Symbol[] { Symbol.getSASLSymbol("PLAIN") });
             }
         };
     }

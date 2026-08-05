@@ -23,6 +23,7 @@ import static org.mockito.Mockito.when;
 
 import org.apache.qpid.protonj2.buffer.ProtonBuffer;
 import org.apache.qpid.protonj2.buffer.ProtonBufferAllocator;
+import org.apache.qpid.protonj2.engine.exceptions.ProtocolViolationException;
 import org.apache.qpid.protonj2.types.UnsignedInteger;
 import org.apache.qpid.protonj2.types.transport.Begin;
 import org.apache.qpid.protonj2.types.transport.Transfer;
@@ -30,6 +31,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
@@ -41,6 +43,9 @@ class ProtonSessionIncomingWindowTest {
     private static final int DEFAULT_SESSION_CAPACITY = 100_000;
 
     private static final int DEFAULT_MAX_FRAME_SIZE = 100_000;
+
+    @Mock
+    ProtonEngine engine;
 
     @Mock
     ProtonConnection connection;
@@ -61,6 +66,7 @@ class ProtonSessionIncomingWindowTest {
 
     @BeforeEach
     public void setUp() throws Exception {
+        when(session.getEngine()).thenReturn(engine);
         when(session.getConnection()).thenReturn(connection);
         when(session.getConnection().getMaxFrameSize()).thenReturn((long) DEFAULT_MAX_FRAME_SIZE);
 
@@ -204,6 +210,44 @@ class ProtonSessionIncomingWindowTest {
         window.handleTransfer(receiver, transfer, payload);
         assertEquals(3, window.getNextIncomingId());
         assertEquals(0, window.getIncomingWindow());
+    }
+
+    @Test
+    public void testIncomingWindowViolationTriggersEngineFailure() {
+        localBegin.setNextOutgoingId(0);
+        remoteBegin.setNextOutgoingId(0);
+
+        window.setIncomingCapacity(DEFAULT_SESSION_CAPACITY * 3);
+        window.configureOutbound(localBegin);
+        window.handleBegin(remoteBegin);
+
+        when(receiver.remoteTransfer(any(), any())).thenReturn(delivery);
+
+        final Transfer transfer = new Transfer();
+        final ProtonBuffer payload = ProtonBufferAllocator.defaultAllocator().allocateHeapBuffer();
+
+        payload.writeInt(255);
+
+        assertEquals(0, window.getNextIncomingId());
+        assertEquals(3, window.getIncomingWindow());
+        window.handleTransfer(receiver, transfer, payload);
+        assertEquals(1, window.getNextIncomingId());
+        assertEquals(2, window.getIncomingWindow());
+        window.handleTransfer(receiver, transfer, payload);
+        assertEquals(2, window.getNextIncomingId());
+        assertEquals(1, window.getIncomingWindow());
+        window.handleTransfer(receiver, transfer, payload);
+        assertEquals(3, window.getNextIncomingId());
+        assertEquals(0, window.getIncomingWindow());
+
+        // Sender exhausted the incoming window now if they send again before
+        // receiver consumes any bytes that might expand the window the engine
+        // should fail which triggers the implementation to close the connection.
+        // A failed engine cannot send or receive any additional bytes
+
+        window.handleTransfer(receiver, transfer, payload);
+
+        Mockito.verify(engine).engineFailed(any(ProtocolViolationException.class));
     }
 
     @Test

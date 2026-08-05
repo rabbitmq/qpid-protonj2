@@ -541,4 +541,26 @@ public class DataTypeCodecTest extends CodecTestSupport {
             fail("Should not decode type with invalid encoding");
         } catch (DecodeException ex) {}
     }
+
+    @Test
+    public void testReadTypeWithOverLargeEncodingFromStream() throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        streamDecoderState.setMaxBinarySize(100);
+
+        final byte[] payload = new byte[Byte.MAX_VALUE];
+
+        buffer.writeByte((byte) 0); // Described Type Indicator
+        buffer.writeByte(EncodingCodes.SMALLULONG);
+        buffer.writeByte(Data.DESCRIPTOR_CODE.byteValue());
+        buffer.writeByte(EncodingCodes.VBIN32);
+        buffer.writeInt(Byte.MAX_VALUE); // Not enough bytes in buffer for this
+        buffer.writeBytes(payload);
+
+        try {
+            InputStream stream = new ProtonBufferInputStream(buffer);
+            streamDecoder.readObject(stream, streamDecoderState);
+            fail("Should not decode type with invalid encoding");
+        } catch (DecodeException ex) {}
+    }
 }

@@ -19,7 +19,7 @@ package org.apache.qpid.protonj2.codec.messaging;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -39,6 +39,7 @@ import org.apache.qpid.protonj2.buffer.ProtonBufferAllocator;
 import org.apache.qpid.protonj2.buffer.ProtonBufferInputStream;
 import org.apache.qpid.protonj2.codec.CodecTestSupport;
 import org.apache.qpid.protonj2.codec.DecodeException;
+import org.apache.qpid.protonj2.codec.EncodeException;
 import org.apache.qpid.protonj2.codec.EncodingCodes;
 import org.apache.qpid.protonj2.codec.StreamTypeDecoder;
 import org.apache.qpid.protonj2.codec.TypeDecoder;
@@ -185,15 +186,12 @@ public class FooterTypeCodecTest extends CodecTestSupport {
         buffer.writeByte(Footer.DESCRIPTOR_CODE.byteValue());
         buffer.writeByte(EncodingCodes.NULL);
 
-        final Footer result;
         if (fromStream) {
             InputStream stream = new ProtonBufferInputStream(buffer);
-            result = (Footer) streamDecoder.readObject(stream, streamDecoderState);
+            assertThrows(DecodeException.class, () -> streamDecoder.readObject(stream, streamDecoderState));
         } else {
-            result = (Footer) decoder.readObject(buffer, decoderState);
+            assertThrows(DecodeException.class, () -> decoder.readObject(buffer, decoderState));
         }
-
-        assertNull(result.getValue());
     }
 
     @Test
@@ -215,15 +213,12 @@ public class FooterTypeCodecTest extends CodecTestSupport {
         Footer.DESCRIPTOR_SYMBOL.writeTo(buffer);
         buffer.writeByte(EncodingCodes.NULL);
 
-        final Footer result;
         if (fromStream) {
             InputStream stream = new ProtonBufferInputStream(buffer);
-            result = (Footer) streamDecoder.readObject(stream, streamDecoderState);
+            assertThrows(DecodeException.class, () -> streamDecoder.readObject(stream, streamDecoderState));
         } else {
-            result = (Footer) decoder.readObject(buffer, decoderState);
+            assertThrows(DecodeException.class, () -> decoder.readObject(buffer, decoderState));
         }
-
-        assertNull(result.getValue());
     }
 
     @Test
@@ -286,32 +281,9 @@ public class FooterTypeCodecTest extends CodecTestSupport {
 
     @Test
     public void testEncodeDecodeFooterWithEmptyValue() throws IOException {
-        doTestEncodeDecodeFooterWithEmptyValue(false);
-    }
-
-    @Test
-    public void testEncodeDecodeFooterWithEmptyValueFromStream() throws IOException {
-        doTestEncodeDecodeFooterWithEmptyValue(true);
-    }
-
-    private void doTestEncodeDecodeFooterWithEmptyValue(boolean fromStream) throws IOException {
         ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
 
-        encoder.writeObject(buffer, encoderState, new Footer(null));
-
-        final Object result;
-        if (fromStream) {
-            InputStream stream = new ProtonBufferInputStream(buffer);
-            result = streamDecoder.readObject(stream, streamDecoderState);
-        } else {
-            result = decoder.readObject(buffer, decoderState);
-        }
-
-        assertNotNull(result);
-        assertTrue(result instanceof Footer);
-
-        Footer readAnnotations = (Footer) result;
-        assertNull(readAnnotations.getValue());
+        assertThrows(EncodeException.class, () -> encoder.writeObject(buffer, encoderState, new Footer(null)));
     }
 
     @Test
@@ -401,24 +373,16 @@ public class FooterTypeCodecTest extends CodecTestSupport {
         buffer.writeByte(EncodingCodes.NULL);
 
         if (fromStream) {
-            InputStream stream = new ProtonBufferInputStream(buffer);
-            StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
-            assertEquals(Footer.class, typeDecoder.getTypeClass());
+            final InputStream stream = new ProtonBufferInputStream(buffer);
+            final StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
 
-            try {
-                typeDecoder.skipValue(stream, streamDecoderState);
-            } catch (DecodeException ex) {
-                fail("Should be able to skip type with null inner encoding");
-            }
+            assertEquals(Footer.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.skipValue(stream, streamDecoderState));
         } else {
-            TypeDecoder<?> typeDecoder = decoder.readNextTypeDecoder(buffer, decoderState);
-            assertEquals(Footer.class, typeDecoder.getTypeClass());
+            final TypeDecoder<?> typeDecoder = decoder.readNextTypeDecoder(buffer, decoderState);
 
-            try {
-                typeDecoder.skipValue(buffer, decoderState);
-            } catch (DecodeException ex) {
-                fail("Should be able to skip type with null inner encoding");
-            }
+            assertEquals(Footer.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.skipValue(buffer, decoderState));
         }
     }
 
@@ -852,6 +816,180 @@ public class FooterTypeCodecTest extends CodecTestSupport {
             assertNotNull(result);
             Footer decoded = result.readValue(buffer, decoderState);
             assertEquals(propertiesMap2, decoded.getValue());
+        }
+    }
+
+    @Test
+    public void testDecodeProtectsAgainstArrayOfNullEncodingsForMapBasedTypeArray8() throws IOException {
+        doTestDecodeProtectsAgainstArrayOfNullEncodingsForMapBasedType(EncodingCodes.ARRAY8, false);
+    }
+
+    @Test
+    public void testDecodeProtectsAgainstArrayOfNullEncodingsForMapBasedTypeArray32() throws IOException {
+        doTestDecodeProtectsAgainstArrayOfNullEncodingsForMapBasedType(EncodingCodes.ARRAY32, false);
+    }
+
+    @Test
+    public void testDecodeProtectsAgainstArrayOfNullEncodingsForMapBasedTypeArray8FS() throws IOException {
+        doTestDecodeProtectsAgainstArrayOfNullEncodingsForMapBasedType(EncodingCodes.ARRAY8, true);
+    }
+
+    @Test
+    public void testDecodeProtectsAgainstArrayOfNullEncodingsForMapBasedTypeArray32FS() throws IOException {
+        doTestDecodeProtectsAgainstArrayOfNullEncodingsForMapBasedType(EncodingCodes.ARRAY32, true);
+    }
+
+    private void doTestDecodeProtectsAgainstArrayOfNullEncodingsForMapBasedType(byte arrayType, boolean fromStream) throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        if (arrayType == EncodingCodes.ARRAY32) {
+            buffer.writeByte(EncodingCodes.ARRAY32);
+            buffer.writeInt(8);  // Size
+            buffer.writeInt(Integer.MAX_VALUE);  // Count
+        } else {
+            buffer.writeByte(EncodingCodes.ARRAY8);
+            buffer.writeByte((byte) 5);  // Size
+            buffer.writeByte(Byte.MAX_VALUE);  // Count
+        }
+        buffer.writeByte((byte) 0); // Described Type Indicator
+        buffer.writeByte(EncodingCodes.SMALLULONG);
+        buffer.writeByte(Footer.DESCRIPTOR_CODE.byteValue());
+        buffer.writeByte(EncodingCodes.NULL);
+
+        if (fromStream) {
+            InputStream stream = new ProtonBufferInputStream(buffer.copy(true));
+            StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
+            assertEquals(Object.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.readValue(stream, streamDecoderState));
+        } else {
+            TypeDecoder<?> typeDecoder = decoder.readNextTypeDecoder(buffer, decoderState);
+            assertEquals(Object.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.readValue(buffer, decoderState));
+        }
+    }
+
+    @Test
+    public void testDecodeFailsForArraysOfValuesWhereCountIsGreaterThanRemainingBytesArray8() throws IOException {
+        testDecodeFailsForArraysOfValuesWhereCountIsGreaterThanRemainingBytes(EncodingCodes.ARRAY8);
+    }
+
+    @Test
+    public void testDecodeFailsForArraysOfValuesWhereCountIsGreaterThanRemainingBytesArray32() throws IOException {
+        testDecodeFailsForArraysOfValuesWhereCountIsGreaterThanRemainingBytes(EncodingCodes.ARRAY32);
+    }
+
+    private void testDecodeFailsForArraysOfValuesWhereCountIsGreaterThanRemainingBytes(byte arrayType) throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        if (arrayType == EncodingCodes.ARRAY32) {
+            buffer.writeByte(EncodingCodes.ARRAY32);
+            buffer.writeInt(8);  // Size
+            buffer.writeInt(Integer.MAX_VALUE);  // Count
+        } else {
+            buffer.writeByte(EncodingCodes.ARRAY8);
+            buffer.writeByte((byte) 5);  // Size
+            buffer.writeByte(Byte.MAX_VALUE);  // Count
+        }
+        buffer.writeByte((byte) 0); // Described Type Indicator
+        buffer.writeByte(EncodingCodes.SMALLULONG);
+        buffer.writeByte(Footer.DESCRIPTOR_CODE.byteValue());
+        buffer.writeByte(EncodingCodes.MAP8);
+
+        TypeDecoder<?> typeDecoder = decoder.readNextTypeDecoder(buffer, decoderState);
+        assertEquals(Object.class, typeDecoder.getTypeClass());
+        assertThrows(DecodeException.class, () -> typeDecoder.readValue(buffer, decoderState));
+    }
+
+    @Test
+    public void testDecodeNestedTypeMap8() throws IOException {
+        doTestDecodeNestedMapType(EncodingCodes.MAP8, false);
+    }
+
+    @Test
+    public void testDecodeNestedTypeMap32() throws IOException {
+        doTestDecodeNestedMapType(EncodingCodes.MAP32, false);
+    }
+
+    @Test
+    public void testDecodeNestedTypeMap8FS() throws IOException {
+        doTestDecodeNestedMapType(EncodingCodes.MAP8, true);
+    }
+
+    @Test
+    public void testDecodeNestedTypeMap32FS() throws IOException {
+        doTestDecodeNestedMapType(EncodingCodes.MAP32, true);
+    }
+
+    private void doTestDecodeNestedMapType(byte arrayType, boolean fromStream) throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        buffer.writeByte((byte) 0); // Described Type Indicator
+        buffer.writeByte(EncodingCodes.SMALLULONG);
+        buffer.writeByte(Footer.DESCRIPTOR_CODE.byteValue());
+
+        if (arrayType == EncodingCodes.MAP32) {
+            buffer.writeByte(EncodingCodes.MAP32);
+            buffer.writeInt(24);  // Size
+            buffer.writeInt(2);  // Count
+        } else {
+            buffer.writeByte(EncodingCodes.MAP8);
+            buffer.writeByte((byte) 15);  // Size
+            buffer.writeByte((byte) 2);  // Count
+        }
+
+        // Nested Application Properties inside another - Key
+        buffer.writeByte(EncodingCodes.SYM8);
+        buffer.writeByte((byte) 1);
+        buffer.writeByte((byte) 65);
+        // Value
+        buffer.writeByte((byte) 0); // Described Type Indicator
+        buffer.writeByte(EncodingCodes.SMALLULONG);
+        buffer.writeByte(Footer.DESCRIPTOR_CODE.byteValue());
+
+        if (arrayType == EncodingCodes.MAP32) {
+            buffer.writeByte(EncodingCodes.MAP32);
+            buffer.writeInt(9);  // Size
+            buffer.writeInt(2);  // Count
+        } else {
+            buffer.writeByte(EncodingCodes.MAP8);
+            buffer.writeByte((byte) 6);  // Size
+            buffer.writeByte((byte) 2);  // Count
+        }
+
+        buffer.writeByte(EncodingCodes.SYM8);
+        buffer.writeByte((byte) 1);
+        buffer.writeByte((byte) 65);
+        buffer.writeByte(EncodingCodes.BYTE);
+        buffer.writeByte((byte) 1);
+
+        decoderState.setDepthLimit(1);
+        streamDecoderState.setDepthLimit(1);
+
+        if (fromStream) {
+            InputStream stream = new ProtonBufferInputStream(buffer.copy(true));
+            StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
+            assertEquals(Footer.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.readValue(stream, streamDecoderState));
+        } else {
+            TypeDecoder<?> typeDecoder = decoder.readNextTypeDecoder(buffer, decoderState);
+            assertEquals(Footer.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.readValue(buffer, decoderState));
+        }
+
+        buffer.setReadOffset(0);
+
+        decoderState.setDepthLimit(2);
+        streamDecoderState.setDepthLimit(2);
+
+        if (fromStream) {
+            InputStream stream = new ProtonBufferInputStream(buffer.copy(true));
+            StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
+            assertEquals(Footer.class, typeDecoder.getTypeClass());
+            assertNotNull(typeDecoder.readValue(stream, streamDecoderState));
+        } else {
+            TypeDecoder<?> typeDecoder = decoder.readNextTypeDecoder(buffer, decoderState);
+            assertEquals(Footer.class, typeDecoder.getTypeClass());
+            assertNotNull(typeDecoder.readValue(buffer, decoderState));
         }
     }
 }
