@@ -19,7 +19,7 @@ package org.apache.qpid.protonj2.codec.messaging;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -38,6 +38,7 @@ import org.apache.qpid.protonj2.buffer.ProtonBufferAllocator;
 import org.apache.qpid.protonj2.buffer.ProtonBufferInputStream;
 import org.apache.qpid.protonj2.codec.CodecTestSupport;
 import org.apache.qpid.protonj2.codec.DecodeException;
+import org.apache.qpid.protonj2.codec.EncodeException;
 import org.apache.qpid.protonj2.codec.EncodingCodes;
 import org.apache.qpid.protonj2.codec.StreamTypeDecoder;
 import org.apache.qpid.protonj2.codec.TypeDecoder;
@@ -263,32 +264,9 @@ public class ApplicationPropertiesTypeCodecTest extends CodecTestSupport {
 
     @Test
     public void testEncodeDecodeMessageAnnotationsWithEmptyValue() throws IOException {
-        doTestEncodeDecodeMessageAnnotationsWithEmptyValue(false);
-    }
-
-    @Test
-    public void testEncodeDecodeMessageAnnotationsWithEmptyValueFromStream() throws IOException {
-        doTestEncodeDecodeMessageAnnotationsWithEmptyValue(true);
-    }
-
-    private void doTestEncodeDecodeMessageAnnotationsWithEmptyValue(boolean fromStream) throws IOException {
         ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
 
-        encoder.writeObject(buffer, encoderState, new ApplicationProperties(null));
-
-        final Object result;
-        if (fromStream) {
-            InputStream stream = new ProtonBufferInputStream(buffer);
-            result = streamDecoder.readObject(stream, streamDecoderState);
-        } else {
-            result = decoder.readObject(buffer, decoderState);
-        }
-
-        assertNotNull(result);
-        assertTrue(result instanceof ApplicationProperties);
-
-        ApplicationProperties readAnnotations = (ApplicationProperties) result;
-        assertNull(readAnnotations.getValue());
+        assertThrows(EncodeException.class, () -> encoder.writeObject(buffer, encoderState, new ApplicationProperties(null)));
     }
 
     @Test
@@ -378,24 +356,16 @@ public class ApplicationPropertiesTypeCodecTest extends CodecTestSupport {
         buffer.writeByte(EncodingCodes.NULL);
 
         if (fromStream) {
-            InputStream stream = new ProtonBufferInputStream(buffer);
-            StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
-            assertEquals(ApplicationProperties.class, typeDecoder.getTypeClass());
+            final InputStream stream = new ProtonBufferInputStream(buffer);
+            final StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
 
-            try {
-                typeDecoder.skipValue(stream, streamDecoderState);
-            } catch (DecodeException ex) {
-                fail("Should be able to skip type with null inner encoding");
-            }
+            assertEquals(ApplicationProperties.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.skipValue(stream, streamDecoderState));
         } else {
-            TypeDecoder<?> typeDecoder = decoder.readNextTypeDecoder(buffer, decoderState);
-            assertEquals(ApplicationProperties.class, typeDecoder.getTypeClass());
+            final TypeDecoder<?> typeDecoder = decoder.readNextTypeDecoder(buffer, decoderState);
 
-            try {
-                typeDecoder.skipValue(buffer, decoderState);
-            } catch (DecodeException ex) {
-                fail("Should be able to skip type with null inner encoding");
-            }
+            assertEquals(ApplicationProperties.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.skipValue(buffer, decoderState));
         }
     }
 
@@ -462,19 +432,12 @@ public class ApplicationPropertiesTypeCodecTest extends CodecTestSupport {
         buffer.writeByte(ApplicationProperties.DESCRIPTOR_CODE.byteValue());
         buffer.writeByte(EncodingCodes.NULL);
 
-        final Object result;
         if (fromStream) {
             InputStream stream = new ProtonBufferInputStream(buffer);
-            result = streamDecoder.readObject(stream, streamDecoderState);
+            assertThrows(DecodeException.class, () -> streamDecoder.readObject(stream, streamDecoderState));
         } else {
-            result = decoder.readObject(buffer, decoderState);
+            assertThrows(DecodeException.class, () -> decoder.readObject(buffer, decoderState));
         }
-
-        assertNotNull(result);
-        assertTrue(result instanceof ApplicationProperties);
-
-        ApplicationProperties decoded = (ApplicationProperties) result;
-        assertNull(decoded.getValue());
     }
 
     @Test
@@ -817,6 +780,518 @@ public class ApplicationPropertiesTypeCodecTest extends CodecTestSupport {
             assertNotNull(result);
             ApplicationProperties decoded = result.readValue(buffer, decoderState);
             assertEquals(propertiesMap2, decoded.getValue());
+        }
+    }
+
+    @Test
+    public void testDecodeProtectsAgainstArrayOfNullEncodingsForMapBasedTypeArray8() throws IOException {
+        doTestDecodeProtectsAgainstArrayOfNullEncodingsForMapBasedType(EncodingCodes.ARRAY8, false);
+    }
+
+    @Test
+    public void testDecodeProtectsAgainstArrayOfNullEncodingsForMapBasedTypeArray32() throws IOException {
+        doTestDecodeProtectsAgainstArrayOfNullEncodingsForMapBasedType(EncodingCodes.ARRAY32, false);
+    }
+
+    @Test
+    public void testDecodeProtectsAgainstArrayOfNullEncodingsForMapBasedTypeArray8FS() throws IOException {
+        doTestDecodeProtectsAgainstArrayOfNullEncodingsForMapBasedType(EncodingCodes.ARRAY8, true);
+    }
+
+    @Test
+    public void testDecodeProtectsAgainstArrayOfNullEncodingsForMapBasedTypeArray32FS() throws IOException {
+        doTestDecodeProtectsAgainstArrayOfNullEncodingsForMapBasedType(EncodingCodes.ARRAY32, true);
+    }
+
+    private void doTestDecodeProtectsAgainstArrayOfNullEncodingsForMapBasedType(byte arrayType, boolean fromStream) throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        if (arrayType == EncodingCodes.ARRAY32) {
+            buffer.writeByte(EncodingCodes.ARRAY32);
+            buffer.writeInt(8);  // Size
+            buffer.writeInt(Integer.MAX_VALUE);  // Count
+        } else {
+            buffer.writeByte(EncodingCodes.ARRAY8);
+            buffer.writeByte((byte) 5);  // Size
+            buffer.writeByte(Byte.MAX_VALUE);  // Count
+        }
+        buffer.writeByte((byte) 0); // Described Type Indicator
+        buffer.writeByte(EncodingCodes.SMALLULONG);
+        buffer.writeByte(ApplicationProperties.DESCRIPTOR_CODE.byteValue());
+        buffer.writeByte(EncodingCodes.NULL);
+
+        if (fromStream) {
+            InputStream stream = new ProtonBufferInputStream(buffer.copy(true));
+            StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
+            assertEquals(Object.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.readValue(stream, streamDecoderState));
+        } else {
+            TypeDecoder<?> typeDecoder = decoder.readNextTypeDecoder(buffer, decoderState);
+            assertEquals(Object.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.readValue(buffer, decoderState));
+        }
+    }
+
+    @Test
+    public void testDecodeFailsForArraysOfValuesWhereCountIsGreaterThanRemainingBytesArray8() throws IOException {
+        testDecodeFailsForArraysOfValuesWhereCountIsGreaterThanRemainingBytes(EncodingCodes.ARRAY8);
+    }
+
+    @Test
+    public void testDecodeFailsForArraysOfValuesWhereCountIsGreaterThanRemainingBytesArray32() throws IOException {
+        testDecodeFailsForArraysOfValuesWhereCountIsGreaterThanRemainingBytes(EncodingCodes.ARRAY32);
+    }
+
+    private void testDecodeFailsForArraysOfValuesWhereCountIsGreaterThanRemainingBytes(byte arrayType) throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        if (arrayType == EncodingCodes.ARRAY32) {
+            buffer.writeByte(EncodingCodes.ARRAY32);
+            buffer.writeInt(8);  // Size
+            buffer.writeInt(Integer.MAX_VALUE);  // Count
+        } else {
+            buffer.writeByte(EncodingCodes.ARRAY8);
+            buffer.writeByte((byte) 5);  // Size
+            buffer.writeByte(Byte.MAX_VALUE);  // Count
+        }
+        buffer.writeByte((byte) 0); // Described Type Indicator
+        buffer.writeByte(EncodingCodes.SMALLULONG);
+        buffer.writeByte(ApplicationProperties.DESCRIPTOR_CODE.byteValue());
+        buffer.writeByte(EncodingCodes.MAP8);
+
+        TypeDecoder<?> typeDecoder = decoder.readNextTypeDecoder(buffer, decoderState);
+        assertEquals(Object.class, typeDecoder.getTypeClass());
+        assertThrows(DecodeException.class, () -> typeDecoder.readValue(buffer, decoderState));
+    }
+
+    @Test
+    public void testDecodeFailsIfArrayOfDescribedMapTypeWhereCountIsLargerThanDataArray8() throws IOException {
+        doTestDecodeFailsIfArrayOfDescribedMapTypeWhereCountIsLargerThanData(EncodingCodes.ARRAY8, false);
+    }
+
+    @Test
+    public void testDecodeFailsIfArrayOfDescribedMapTypeWhereCountIsLargerThanDataArray32() throws IOException {
+        doTestDecodeFailsIfArrayOfDescribedMapTypeWhereCountIsLargerThanData(EncodingCodes.ARRAY32, false);
+    }
+
+    @Test
+    public void testDecodeFailsIfArrayOfDescribedMapTypeWhereCountIsLargerThanDataArray8FS() throws IOException {
+        doTestDecodeFailsIfArrayOfDescribedMapTypeWhereCountIsLargerThanData(EncodingCodes.ARRAY8, true);
+    }
+
+    @Test
+    public void testDecodeFailsIfArrayOfDescribedMapTypeWhereCountIsLargerThanDataArray32FS() throws IOException {
+        doTestDecodeFailsIfArrayOfDescribedMapTypeWhereCountIsLargerThanData(EncodingCodes.ARRAY32, true);
+    }
+
+    private void doTestDecodeFailsIfArrayOfDescribedMapTypeWhereCountIsLargerThanData(byte arrayType, boolean fromStream) throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        streamDecoderState.setMaxArraySize(20);
+
+        if (arrayType == EncodingCodes.ARRAY32) {
+            buffer.writeByte(EncodingCodes.ARRAY32);
+            buffer.writeInt(16);         // Size
+            buffer.writeInt(25);         // Count
+            buffer.writeByte((byte) 0);  // Described Type Indicator
+            buffer.writeByte(EncodingCodes.SMALLULONG);
+            buffer.writeByte(ApplicationProperties.DESCRIPTOR_CODE.byteValue());
+            buffer.writeByte(EncodingCodes.MAP32);
+            buffer.writeInt((byte) 4);
+            buffer.writeInt((byte) 0);
+        } else {
+            buffer.writeByte(EncodingCodes.ARRAY8);
+            buffer.writeByte((byte) 7);    // Size
+            buffer.writeByte((byte) 25);   // Count
+            buffer.writeByte((byte) 0);    // Described Type Indicator
+            buffer.writeByte(EncodingCodes.SMALLULONG);
+            buffer.writeByte(ApplicationProperties.DESCRIPTOR_CODE.byteValue());
+            buffer.writeByte(EncodingCodes.MAP8);
+            buffer.writeByte((byte) 1);
+            buffer.writeByte((byte) 0);
+        }
+
+        if (fromStream) {
+            InputStream stream = new ProtonBufferInputStream(buffer.copy(true));
+            StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
+            assertEquals(Object.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.readValue(stream, streamDecoderState));
+        } else {
+            TypeDecoder<?> typeDecoder = decoder.readNextTypeDecoder(buffer, decoderState);
+            assertEquals(Object.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.readValue(buffer, decoderState));
+        }
+    }
+
+    @Test
+    public void testDecodeFailsIfArrayOfDescribedMapTypeOfNullWhereCountIsLargerThanDataArray8() throws IOException {
+        doTestDecodeFailsIfArrayOfDescribedMapTypeOfNullWhereCountIsLargerThanData(EncodingCodes.ARRAY8, false);
+    }
+
+    @Test
+    public void testDecodeFailsIfArrayOfDescribedMapTypeOfNullWhereCountIsLargerThanDataArray32() throws IOException {
+        doTestDecodeFailsIfArrayOfDescribedMapTypeOfNullWhereCountIsLargerThanData(EncodingCodes.ARRAY32, false);
+    }
+
+    @Test
+    public void testDecodeFailsIfArrayOfDescribedMapTypeOfNullWhereCountIsLargerThanDataArray8FS() throws IOException {
+        doTestDecodeFailsIfArrayOfDescribedMapTypeOfNullWhereCountIsLargerThanData(EncodingCodes.ARRAY8, true);
+    }
+
+    @Test
+    public void testDecodeFailsIfArrayOfDescribedMapTypeOfNullWhereCountIsLargerThanDataArray32FS() throws IOException {
+        doTestDecodeFailsIfArrayOfDescribedMapTypeOfNullWhereCountIsLargerThanData(EncodingCodes.ARRAY32, true);
+    }
+
+    private void doTestDecodeFailsIfArrayOfDescribedMapTypeOfNullWhereCountIsLargerThanData(byte arrayType, boolean fromStream) throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        streamDecoderState.setMaxArraySize(20);
+
+        if (arrayType == EncodingCodes.ARRAY32) {
+            buffer.writeByte(EncodingCodes.ARRAY32);
+            buffer.writeInt(14);         // Size
+            buffer.writeInt(25);         // Count
+            buffer.writeByte((byte) 0);  // Described Type Indicator
+            buffer.writeByte(EncodingCodes.SMALLULONG);
+            buffer.writeByte(ApplicationProperties.DESCRIPTOR_CODE.byteValue());
+            buffer.writeByte(EncodingCodes.NULL);
+        } else {
+            buffer.writeByte(EncodingCodes.ARRAY8);
+            buffer.writeByte((byte) 5);    // Size
+            buffer.writeByte((byte) 25);   // Count
+            buffer.writeByte((byte) 0);    // Described Type Indicator
+            buffer.writeByte(EncodingCodes.SMALLULONG);
+            buffer.writeByte(ApplicationProperties.DESCRIPTOR_CODE.byteValue());
+            buffer.writeByte(EncodingCodes.NULL);
+        }
+
+        if (fromStream) {
+            InputStream stream = new ProtonBufferInputStream(buffer.copy(true));
+            StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
+            assertEquals(Object.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.readValue(stream, streamDecoderState));
+        } else {
+            TypeDecoder<?> typeDecoder = decoder.readNextTypeDecoder(buffer, decoderState);
+            assertEquals(Object.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.readValue(buffer, decoderState));
+        }
+    }
+
+    @Test
+    public void testDecodeFailsForMapEncodingWhereSizeExceedsAllowedLimitsMap8() throws IOException {
+        doTestDecodeFailsForMapEncodingWhereSizeExceedsAllowedLimitsMap8(EncodingCodes.MAP8, false);
+    }
+
+    @Test
+    public void testDecodeFailsForMapEncodingWhereSizeExceedsAllowedLimitsMap32() throws IOException {
+        doTestDecodeFailsForMapEncodingWhereSizeExceedsAllowedLimitsMap8(EncodingCodes.MAP32, false);
+    }
+
+    @Test
+    public void testDecodeFailsForMapEncodingWhereSizeExceedsAllowedLimitsMap8FS() throws IOException {
+        doTestDecodeFailsForMapEncodingWhereSizeExceedsAllowedLimitsMap8(EncodingCodes.MAP8, true);
+    }
+
+    @Test
+    public void testDecodeFailsForMapEncodingWhereSizeExceedsAllowedLimitsMap32FS() throws IOException {
+        doTestDecodeFailsForMapEncodingWhereSizeExceedsAllowedLimitsMap8(EncodingCodes.MAP32, true);
+    }
+
+    private void doTestDecodeFailsForMapEncodingWhereSizeExceedsAllowedLimitsMap8(byte arrayType, boolean fromStream) throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        streamDecoderState.setMaxMapSize(16);
+
+        buffer.writeByte((byte) 0); // Described Type Indicator
+        buffer.writeByte(EncodingCodes.SMALLULONG);
+        buffer.writeByte(ApplicationProperties.DESCRIPTOR_CODE.byteValue());
+
+        if (arrayType == EncodingCodes.MAP32) {
+            buffer.writeByte(EncodingCodes.MAP32);
+            buffer.writeInt(18);  // Size
+            buffer.writeInt(2);  // Count
+        } else {
+            buffer.writeByte(EncodingCodes.MAP8);
+            buffer.writeByte((byte) 18);  // Size
+            buffer.writeByte((byte) 2);  // Count
+        }
+
+        buffer.writeByte(EncodingCodes.STR8);
+        buffer.writeByte((byte) 1);
+        buffer.writeByte((byte) 65);
+        buffer.writeByte(EncodingCodes.BYTE);
+        buffer.writeByte((byte) 1);
+
+        if (fromStream) {
+            InputStream stream = new ProtonBufferInputStream(buffer.copy(true));
+            StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
+            assertEquals(ApplicationProperties.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.readValue(stream, streamDecoderState));
+        } else {
+            TypeDecoder<?> typeDecoder = decoder.readNextTypeDecoder(buffer, decoderState);
+            assertEquals(ApplicationProperties.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.readValue(buffer, decoderState));
+        }
+    }
+
+    @Test
+    public void testDecodeFailsForMapEncodingWhereCountExceedsAllowedLimitsMap8() throws IOException {
+        doTestDecodeFailsForMapEncodingWhereCountExceedsAllowedLimitsMap8(EncodingCodes.MAP8, false);
+    }
+
+    @Test
+    public void testDecodeFailsForMapEncodingWhereCountExceedsAllowedLimitsMap32() throws IOException {
+        doTestDecodeFailsForMapEncodingWhereCountExceedsAllowedLimitsMap8(EncodingCodes.MAP32, false);
+    }
+
+    @Test
+    public void testDecodeFailsForMapEncodingWhereCountExceedsAllowedLimitsMap8FS() throws IOException {
+        doTestDecodeFailsForMapEncodingWhereCountExceedsAllowedLimitsMap8(EncodingCodes.MAP8, true);
+    }
+
+    @Test
+    public void testDecodeFailsForMapEncodingWhereCountExceedsAllowedLimitsMap32FS() throws IOException {
+        doTestDecodeFailsForMapEncodingWhereCountExceedsAllowedLimitsMap8(EncodingCodes.MAP32, true);
+    }
+
+    private void doTestDecodeFailsForMapEncodingWhereCountExceedsAllowedLimitsMap8(byte arrayType, boolean fromStream) throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        streamDecoderState.setMaxMapSize(16);
+
+        buffer.writeByte((byte) 0); // Described Type Indicator
+        buffer.writeByte(EncodingCodes.SMALLULONG);
+        buffer.writeByte(ApplicationProperties.DESCRIPTOR_CODE.byteValue());
+
+        if (arrayType == EncodingCodes.MAP32) {
+            buffer.writeByte(EncodingCodes.MAP32);
+            buffer.writeInt(9);  // Size
+            buffer.writeInt(18);  // Count
+        } else {
+            buffer.writeByte(EncodingCodes.MAP8);
+            buffer.writeByte((byte) 6);  // Size
+            buffer.writeByte((byte) 18);  // Count
+        }
+
+        buffer.writeByte(EncodingCodes.STR8);
+        buffer.writeByte((byte) 1);
+        buffer.writeByte((byte) 65);
+        buffer.writeByte(EncodingCodes.BYTE);
+        buffer.writeByte((byte) 1);
+
+        if (fromStream) {
+            InputStream stream = new ProtonBufferInputStream(buffer.copy(true));
+            StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
+            assertEquals(ApplicationProperties.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.readValue(stream, streamDecoderState));
+        } else {
+            TypeDecoder<?> typeDecoder = decoder.readNextTypeDecoder(buffer, decoderState);
+            assertEquals(ApplicationProperties.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.readValue(buffer, decoderState));
+        }
+    }
+
+    @Test
+    public void testDecodeFailsForMapEncodingWhereCountIsNotEvenMap8() throws IOException {
+        testDecodeFailsForMapEncodingWhereCountIsNotEven(EncodingCodes.MAP8, false);
+    }
+
+    @Test
+    public void testDecodeFailsForMapEncodingWhereCountIsNotEvenMap32() throws IOException {
+        testDecodeFailsForMapEncodingWhereCountIsNotEven(EncodingCodes.MAP32, false);
+    }
+
+    @Test
+    public void testDecodeFailsForMapEncodingWhereCountIsNotEvenMap8FS() throws IOException {
+        testDecodeFailsForMapEncodingWhereCountIsNotEven(EncodingCodes.MAP8, true);
+    }
+
+    @Test
+    public void testDecodeFailsForMapEncodingWhereCountIsNotEvenMap32FS() throws IOException {
+        testDecodeFailsForMapEncodingWhereCountIsNotEven(EncodingCodes.MAP32, true);
+    }
+
+    private void testDecodeFailsForMapEncodingWhereCountIsNotEven(byte arrayType, boolean fromStream) throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        buffer.writeByte((byte) 0); // Described Type Indicator
+        buffer.writeByte(EncodingCodes.SMALLULONG);
+        buffer.writeByte(ApplicationProperties.DESCRIPTOR_CODE.byteValue());
+
+        if (arrayType == EncodingCodes.MAP32) {
+            buffer.writeByte(EncodingCodes.MAP32);
+            buffer.writeInt(9);  // Size
+            buffer.writeInt(1);  // Count
+        } else {
+            buffer.writeByte(EncodingCodes.MAP8);
+            buffer.writeByte((byte) 6);  // Size
+            buffer.writeByte((byte) 1);  // Count
+        }
+
+        buffer.writeByte(EncodingCodes.STR8);
+        buffer.writeByte((byte) 1);
+        buffer.writeByte((byte) 65);
+        buffer.writeByte(EncodingCodes.BYTE);
+        buffer.writeByte((byte) 1);
+
+        if (fromStream) {
+            InputStream stream = new ProtonBufferInputStream(buffer.copy(true));
+            StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
+            assertEquals(ApplicationProperties.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.readValue(stream, streamDecoderState));
+        } else {
+            TypeDecoder<?> typeDecoder = decoder.readNextTypeDecoder(buffer, decoderState);
+            assertEquals(ApplicationProperties.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.readValue(buffer, decoderState));
+        }
+    }
+
+    @Test
+    public void testDecodeMapTypeMap8() throws IOException {
+        doTestDecodeMapType(EncodingCodes.MAP8, false);
+    }
+
+    @Test
+    public void testDecodeMapTypeMap32() throws IOException {
+        doTestDecodeMapType(EncodingCodes.MAP32, false);
+    }
+
+    @Test
+    public void testDecodeMapTypeMap8FS() throws IOException {
+        doTestDecodeMapType(EncodingCodes.MAP8, true);
+    }
+
+    @Test
+    public void testDecodeMapTypeMap32FS() throws IOException {
+        doTestDecodeMapType(EncodingCodes.MAP32, true);
+    }
+
+    private void doTestDecodeMapType(byte arrayType, boolean fromStream) throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        buffer.writeByte((byte) 0); // Described Type Indicator
+        buffer.writeByte(EncodingCodes.SMALLULONG);
+        buffer.writeByte(ApplicationProperties.DESCRIPTOR_CODE.byteValue());
+
+        if (arrayType == EncodingCodes.MAP32) {
+            buffer.writeByte(EncodingCodes.MAP32);
+            buffer.writeInt(9);  // Size
+            buffer.writeInt(2);  // Count
+        } else {
+            buffer.writeByte(EncodingCodes.MAP8);
+            buffer.writeByte((byte) 6);  // Size
+            buffer.writeByte((byte) 2);  // Count
+        }
+
+        buffer.writeByte(EncodingCodes.STR8);
+        buffer.writeByte((byte) 1);
+        buffer.writeByte((byte) 65);
+        buffer.writeByte(EncodingCodes.BYTE);
+        buffer.writeByte((byte) 1);
+
+        if (fromStream) {
+            InputStream stream = new ProtonBufferInputStream(buffer.copy(true));
+            StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
+            assertEquals(ApplicationProperties.class, typeDecoder.getTypeClass());
+            assertNotNull(typeDecoder.readValue(stream, streamDecoderState));
+        } else {
+            TypeDecoder<?> typeDecoder = decoder.readNextTypeDecoder(buffer, decoderState);
+            assertEquals(ApplicationProperties.class, typeDecoder.getTypeClass());
+            assertNotNull(typeDecoder.readValue(buffer, decoderState));
+        }
+    }
+
+    @Test
+    public void testDecodeNestedTypeMap8() throws IOException {
+        doTestDecodeNestedMapType(EncodingCodes.MAP8, false);
+    }
+
+    @Test
+    public void testDecodeNestedTypeMap32() throws IOException {
+        doTestDecodeNestedMapType(EncodingCodes.MAP32, false);
+    }
+
+    @Test
+    public void testDecodeNestedTypeMap8FS() throws IOException {
+        doTestDecodeNestedMapType(EncodingCodes.MAP8, true);
+    }
+
+    @Test
+    public void testDecodeNestedTypeMap32FS() throws IOException {
+        doTestDecodeNestedMapType(EncodingCodes.MAP32, true);
+    }
+
+    private void doTestDecodeNestedMapType(byte arrayType, boolean fromStream) throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        buffer.writeByte((byte) 0); // Described Type Indicator
+        buffer.writeByte(EncodingCodes.SMALLULONG);
+        buffer.writeByte(ApplicationProperties.DESCRIPTOR_CODE.byteValue());
+
+        if (arrayType == EncodingCodes.MAP32) {
+            buffer.writeByte(EncodingCodes.MAP32);
+            buffer.writeInt(24);  // Size
+            buffer.writeInt(2);  // Count
+        } else {
+            buffer.writeByte(EncodingCodes.MAP8);
+            buffer.writeByte((byte) 15);  // Size
+            buffer.writeByte((byte) 2);  // Count
+        }
+
+        // Nested Application Properties inside another - Key
+        buffer.writeByte(EncodingCodes.STR8);
+        buffer.writeByte((byte) 1);
+        buffer.writeByte((byte) 65);
+        // Value
+        buffer.writeByte((byte) 0); // Described Type Indicator
+        buffer.writeByte(EncodingCodes.SMALLULONG);
+        buffer.writeByte(ApplicationProperties.DESCRIPTOR_CODE.byteValue());
+
+        if (arrayType == EncodingCodes.MAP32) {
+            buffer.writeByte(EncodingCodes.MAP32);
+            buffer.writeInt(9);  // Size
+            buffer.writeInt(2);  // Count
+        } else {
+            buffer.writeByte(EncodingCodes.MAP8);
+            buffer.writeByte((byte) 6);  // Size
+            buffer.writeByte((byte) 2);  // Count
+        }
+
+        buffer.writeByte(EncodingCodes.STR8);
+        buffer.writeByte((byte) 1);
+        buffer.writeByte((byte) 65);
+        buffer.writeByte(EncodingCodes.BYTE);
+        buffer.writeByte((byte) 1);
+
+        decoderState.setDepthLimit(1);
+        streamDecoderState.setDepthLimit(1);
+
+        if (fromStream) {
+            InputStream stream = new ProtonBufferInputStream(buffer.copy(true));
+            StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
+            assertEquals(ApplicationProperties.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.readValue(stream, streamDecoderState));
+        } else {
+            TypeDecoder<?> typeDecoder = decoder.readNextTypeDecoder(buffer, decoderState);
+            assertEquals(ApplicationProperties.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.readValue(buffer, decoderState));
+        }
+
+        buffer.setReadOffset(0);
+
+        decoderState.setDepthLimit(2);
+        streamDecoderState.setDepthLimit(2);
+
+        if (fromStream) {
+            InputStream stream = new ProtonBufferInputStream(buffer.copy(true));
+            StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
+            assertEquals(ApplicationProperties.class, typeDecoder.getTypeClass());
+            assertNotNull(typeDecoder.readValue(stream, streamDecoderState));
+        } else {
+            TypeDecoder<?> typeDecoder = decoder.readNextTypeDecoder(buffer, decoderState);
+            assertEquals(ApplicationProperties.class, typeDecoder.getTypeClass());
+            assertNotNull(typeDecoder.readValue(buffer, decoderState));
         }
     }
 }

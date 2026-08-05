@@ -5618,6 +5618,128 @@ public abstract class ProtonAbstractBufferTest {
         }
     }
 
+    @Test
+    public void testIterationBufferComponentReturnsValidArrayReadOffset() {
+        try (ProtonBufferAllocator allocator = createTestCaseAllocator();
+             ProtonBuffer buffer = allocator.allocateHeapBuffer(16)) {
+
+            buffer.writeLong(Long.MAX_VALUE);
+            buffer.readByte();
+
+            assertEquals(1, buffer.componentCount());
+
+            int accessCount = 0;
+
+            try (ProtonBufferComponentAccessor accessor = buffer.componentAccessor()) {
+                for (ProtonBufferComponent component : accessor.components()) {
+                    assertNotNull(component.getReadableArray());
+                    assertEquals(1, component.getReadableArrayOffset());
+                    assertEquals(7, component.getReadableArrayLength());
+
+                    accessCount++;
+                }
+
+                assertEquals(1, accessCount);
+            }
+        }
+    }
+
+    @Test
+    public void testBufferComponentReturnsValidArrayReadOffset() {
+        try (ProtonBufferAllocator allocator = createTestCaseAllocator();
+             ProtonBuffer buffer = allocator.allocateHeapBuffer(16)) {
+
+            buffer.writeLong(Long.MAX_VALUE);
+            buffer.readByte();
+
+            assertEquals(1, buffer.componentCount());
+
+            final ProtonBufferComponent component = buffer.componentAccessor().first();
+
+            assertNotNull(component.getReadableArray());
+            assertEquals(1, component.getReadableArrayOffset());
+            assertEquals(7, component.getReadableArrayLength());
+        }
+    }
+
+    @Test
+    public void testIterationBufferComponentReturnsValidArrayReadOffsetWhenSplit() {
+        try (ProtonBufferAllocator allocator = createTestCaseAllocator();
+             ProtonBuffer buffer = allocator.allocateHeapBuffer(16)) {
+
+            assertEquals(1, buffer.componentCount());
+
+            buffer.writeLong(Long.MAX_VALUE);
+
+            int accessCount = 0;
+
+            try (ProtonBuffer front = buffer.split()) {
+                buffer.writeLong(Long.MAX_VALUE);
+                buffer.readByte();
+
+                try (ProtonBufferComponentAccessor accessor = buffer.componentAccessor()) {
+                    for (ProtonBufferComponent component : accessor.components()) {
+                        assertNotNull(component.getReadableArray());
+                        assertEquals(9, component.getReadableArrayOffset());
+                        assertEquals(7, component.getReadableArrayLength());
+
+                        accessCount++;
+                    }
+                }
+
+                assertEquals(1, accessCount);
+            }
+        }
+    }
+
+    @Test
+    public void testBufferComponentReturnsValidArrayReadOffsetWhenSplit() {
+        try (ProtonBufferAllocator allocator = createTestCaseAllocator();
+             ProtonBuffer buffer = allocator.allocateHeapBuffer(16)) {
+
+            assertEquals(1, buffer.componentCount());
+
+            buffer.writeLong(Long.MAX_VALUE);
+
+            try (ProtonBuffer front = buffer.split()) {
+                buffer.writeLong(Long.MAX_VALUE);
+                buffer.readByte();
+
+                final ProtonBufferComponent component = buffer.componentAccessor().first();
+
+                assertNotNull(component.getReadableArray());
+                assertEquals(9, component.getReadableArrayOffset());
+                assertEquals(7, component.getReadableArrayLength());
+            }
+        }
+    }
+
+    @Test
+    public void testBufferComponentReturnsValidArrayWriteOffset() {
+        try (ProtonBufferAllocator allocator = createTestCaseAllocator();
+             ProtonBuffer buffer = allocator.allocateHeapBuffer(16)) {
+
+            assertEquals(1, buffer.componentCount());
+
+            buffer.writeLong(Long.MAX_VALUE);
+            buffer.readByte();
+
+            int accessCount = 0;
+
+            try (ProtonBufferComponentAccessor accessor = buffer.componentAccessor()) {
+                for (ProtonBufferComponent component : accessor.components()) {
+                    assertNotNull(component.getWritableArray());
+                    assertEquals(Long.BYTES, component.getWritableArrayOffset());
+                    assertEquals(Long.BYTES, component.getWritableArrayLength());
+
+                    accessCount++;
+                }
+            }
+
+            assertEquals(1, accessCount);
+        }
+    }
+
     protected static void verifyInaccessible(ProtonBuffer buf) {
         verifyReadInaccessible(buf);
 

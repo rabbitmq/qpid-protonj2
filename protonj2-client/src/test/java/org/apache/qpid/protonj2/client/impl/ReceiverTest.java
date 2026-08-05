@@ -46,6 +46,7 @@ import org.apache.qpid.protonj2.client.AdvancedMessage;
 import org.apache.qpid.protonj2.client.Client;
 import org.apache.qpid.protonj2.client.Connection;
 import org.apache.qpid.protonj2.client.ConnectionOptions;
+import org.apache.qpid.protonj2.client.DecodeOptions;
 import org.apache.qpid.protonj2.client.Delivery;
 import org.apache.qpid.protonj2.client.DeliveryMode;
 import org.apache.qpid.protonj2.client.DeliveryState;
@@ -3444,6 +3445,204 @@ public class ReceiverTest extends ImperativeClientTestCase {
 
             receiver.close();
             connection.close();
+
+            peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+        }
+    }
+
+    @Test
+    public void testReceiveMessageThatExceedsDepthLimit() throws Exception {
+        try (ProtonTestServer peer = new ProtonTestServer()) {
+            peer.expectSASLAnonymousConnect();
+            peer.expectOpen().respond();
+            peer.expectBegin().respond();
+            peer.expectAttach().withRole(Role.RECEIVER.getValue()).respond();
+            peer.expectFlow();
+            peer.start();
+
+            URI remoteURI = peer.getServerURI();
+
+            LOG.info("Test started, peer listening on: {}", remoteURI);
+
+            Client container = Client.create();
+            Connection connection = container.connect(remoteURI.getHost(), remoteURI.getPort());
+            Session session = connection.openSession();
+            Receiver receiver = session.openReceiver("test-queue", new ReceiverOptions().autoAccept(false));
+            receiver.openFuture().get();
+
+            final byte[] payload = createNestedEncodedMessage(10);
+
+            peer.remoteTransfer().withHandle(0)
+                                 .withDeliveryId(0)
+                                 .withDeliveryTag(new byte[] { 1 })
+                                 .withMore(false)
+                                 .withMessageFormat(0)
+                                 .withPayload(payload).now();
+
+            peer.expectDisposition().withSettled(true).withState().accepted();
+            peer.expectDetach().respond();
+            peer.expectClose().respond();
+
+            Delivery delivery = receiver.receive();
+            assertNotNull(delivery);
+            Message<?> received = delivery.message(DecodeOptions.defaultOptions().depthLimit(20));
+            assertNotNull(received);
+            assertTrue(received.body() instanceof DescribedType);
+
+            delivery.accept();
+            receiver.closeAsync();
+            connection.closeAsync().get();
+
+            peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+        }
+    }
+
+    @Test
+    public void testCannotReceiveMessageThatExceedsDepthLimit() throws Exception {
+        try (ProtonTestServer peer = new ProtonTestServer()) {
+            peer.expectSASLAnonymousConnect();
+            peer.expectOpen().respond();
+            peer.expectBegin().respond();
+            peer.expectAttach().withRole(Role.RECEIVER.getValue()).respond();
+            peer.expectFlow();
+            peer.start();
+
+            URI remoteURI = peer.getServerURI();
+
+            LOG.info("Test started, peer listening on: {}", remoteURI);
+
+            Client container = Client.create();
+            Connection connection = container.connect(remoteURI.getHost(), remoteURI.getPort());
+            Session session = connection.openSession();
+            Receiver receiver = session.openReceiver("test-queue", new ReceiverOptions().autoAccept(false));
+
+            receiver.openFuture().get();
+
+            final byte[] payload = createNestedEncodedMessage(10);
+
+            peer.remoteTransfer().withHandle(0)
+                                 .withDeliveryId(0)
+                                 .withDeliveryTag(new byte[] { 1 })
+                                 .withMore(false)
+                                 .withMessageFormat(0)
+                                 .withPayload(payload).now();
+
+            peer.expectDisposition().withSettled(true).withState().rejected();
+            peer.expectDetach().respond();
+            peer.expectClose().respond();
+
+            Delivery delivery = receiver.receive();
+            assertNotNull(delivery);
+
+            try {
+                delivery.message(DecodeOptions.defaultOptions().depthLimit(5));
+                fail("Should have thrown due to large nesting of elements");
+            } catch (ClientException e) {
+                delivery.reject("amqp:error", e.getMessage());
+            }
+
+            receiver.closeAsync();
+            connection.closeAsync().get();
+
+            peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+        }
+    }
+
+    @Test
+    public void testReceiveMessageWithZeroWidthArrays() throws Exception {
+        try (ProtonTestServer peer = new ProtonTestServer()) {
+            peer.expectSASLAnonymousConnect();
+            peer.expectOpen().respond();
+            peer.expectBegin().respond();
+            peer.expectAttach().withRole(Role.RECEIVER.getValue()).respond();
+            peer.expectFlow();
+            peer.start();
+
+            URI remoteURI = peer.getServerURI();
+
+            LOG.info("Test started, peer listening on: {}", remoteURI);
+
+            Client container = Client.create();
+            Connection connection = container.connect(remoteURI.getHost(), remoteURI.getPort());
+            Session session = connection.openSession();
+            Receiver receiver = session.openReceiver("test-queue", new ReceiverOptions().autoAccept(false));
+            receiver.openFuture().get();
+
+            final byte[] payload = createEncodedMessageWithZeroWidthArray(10);
+
+            peer.remoteTransfer().withHandle(0)
+                                 .withDeliveryId(0)
+                                 .withDeliveryTag(new byte[] { 1 })
+                                 .withMore(false)
+                                 .withMessageFormat(0)
+                                 .withPayload(payload).now();
+
+            peer.expectDisposition().withSettled(true).withState().accepted();
+            peer.expectDetach().respond();
+            peer.expectClose().respond();
+
+            Delivery delivery = receiver.receive();
+            assertNotNull(delivery);
+            Message<?> received = delivery.message(DecodeOptions.defaultOptions().maxZeroWidthArrayElements(10));
+            assertNotNull(received);
+            assertNotNull(received.body());
+            assertTrue(received.body() instanceof boolean[]);
+
+            delivery.accept();
+            receiver.closeAsync();
+            connection.closeAsync().get();
+
+            peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+        }
+    }
+
+    @Test
+    public void testCannotReceiveMessageWithZeroWidthArray() throws Exception {
+        try (ProtonTestServer peer = new ProtonTestServer()) {
+            peer.expectSASLAnonymousConnect();
+            peer.expectOpen().respond();
+            peer.expectBegin().respond();
+            peer.expectAttach().withRole(Role.RECEIVER.getValue()).respond();
+            peer.expectFlow();
+            peer.start();
+
+            URI remoteURI = peer.getServerURI();
+
+            LOG.info("Test started, peer listening on: {}", remoteURI);
+
+            Client container = Client.create();
+            Connection connection = container.connect(remoteURI.getHost(), remoteURI.getPort());
+            Session session = connection.openSession();
+            Receiver receiver = session.openReceiver("test-queue", new ReceiverOptions().autoAccept(false));
+
+            receiver.openFuture().get();
+
+            final byte[] payload = createEncodedMessageWithZeroWidthArray(10);
+
+            peer.remoteTransfer().withHandle(0)
+                                 .withDeliveryId(0)
+                                 .withDeliveryTag(new byte[] { 1 })
+                                 .withMore(false)
+                                 .withMessageFormat(0)
+                                 .withPayload(payload).now();
+
+            peer.expectDisposition().withSettled(true).withState().rejected();
+            peer.expectDetach().respond();
+            peer.expectClose().respond();
+
+            Delivery delivery = receiver.receive();
+            assertNotNull(delivery);
+
+            try {
+                // Defaults won't allow a decode of zero width arrays
+                delivery.message(DecodeOptions.defaultOptions());
+                fail("Should have thrown due to array of zero sized elements");
+            } catch (ClientException e) {
+                delivery.reject("amqp:error", e.getMessage());
+            }
+
+            receiver.closeAsync();
+            connection.closeAsync().get();
 
             peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
         }

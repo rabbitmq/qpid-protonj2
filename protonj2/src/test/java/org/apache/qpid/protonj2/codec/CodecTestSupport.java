@@ -63,6 +63,12 @@ public class CodecTestSupport {
     protected StreamDecoderState streamDecoderState;
     protected StreamDecoder streamDecoder;
 
+    protected DecoderState saslDecoderState;
+    protected Decoder saslDecoder;
+
+    protected StreamDecoderState saslStreamDecoderState;
+    protected StreamDecoder saslStreamDecoder;
+
     protected Random random = new Random();
     protected long currentSeed;
 
@@ -78,6 +84,12 @@ public class CodecTestSupport {
 
         streamDecoder = ProtonStreamDecoderFactory.create();
         streamDecoderState = streamDecoder.newDecoderState();
+
+        saslDecoder = ProtonDecoderFactory.createSasl();
+        saslDecoderState = saslDecoder.newDecoderState();
+
+        saslStreamDecoder = ProtonStreamDecoderFactory.createSasl();
+        saslStreamDecoderState = saslStreamDecoder.newDecoderState();
 
         currentSeed = System.nanoTime();
         random.setSeed(currentSeed);

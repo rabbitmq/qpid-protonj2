@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -84,7 +85,7 @@ public class SaslInitTest {
 
         init.setHostname("localhost");
         init.setInitialResponse(binary);
-        init.setMechanism(Symbol.valueOf("ANONYMOUS"));
+        init.setMechanism(Symbol.getSASLSymbol("ANONYMOUS"));
 
         SaslInit copy = init.copy();
 
@@ -92,6 +93,7 @@ public class SaslInitTest {
         assertEquals(init.getHostname(), copy.getHostname());
         assertEquals(init.getInitialResponse(), copy.getInitialResponse());
         assertEquals(init.getMechanism(), copy.getMechanism());
+        assertSame(init.getMechanism(), copy.getMechanism());
     }
 
     @Test

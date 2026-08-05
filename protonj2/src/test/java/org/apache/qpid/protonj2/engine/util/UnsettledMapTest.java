@@ -46,7 +46,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.qpid.protonj2.logging.ProtonLogger;
 import org.apache.qpid.protonj2.logging.ProtonLoggerFactory;
+import org.apache.qpid.protonj2.types.UnsignedByte;
 import org.apache.qpid.protonj2.types.UnsignedInteger;
+import org.apache.qpid.protonj2.types.UnsignedShort;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -102,6 +104,11 @@ public class UnsettledMapTest {
         }
 
         @Override
+        public int hashCode() {
+            return deliveryId;
+        }
+
+        @Override
         public boolean equals(Object other) {
             if (other instanceof DeliveryType) {
                 DeliveryType otherType = (DeliveryType) other;
@@ -115,6 +122,26 @@ public class UnsettledMapTest {
         public String toString() {
             return "DeliveryType: { " + deliveryId + " }";
         }
+    }
+
+    @Test
+    public void testCreateFailsWhenInitialBucketsNegativeSingleArgument() {
+        assertThrows(IllegalArgumentException.class, () -> new UnsettledMap<>(DeliveryType::getDeliveryId, -1));
+    }
+
+    @Test
+    public void testCreateFailsWhenInitialBucketsNegative() {
+        assertThrows(IllegalArgumentException.class, () -> new UnsettledMap<>(DeliveryType::getDeliveryId, -1, 10));
+    }
+
+    @Test
+    public void testCreateFailsWhenBucketsSizeNegative() {
+        assertThrows(IllegalArgumentException.class, () -> new UnsettledMap<>(DeliveryType::getDeliveryId, 10, -1));
+    }
+
+    @Test
+    public void testEqualsReturnsString() {
+        assertNotNull(tracker.toString());
     }
 
     @Test
@@ -137,6 +164,16 @@ public class UnsettledMapTest {
         UnsettledMap<DeliveryType> tracker = createMap();
 
         assertNull(tracker.get(0));
+    }
+
+    @SuppressWarnings("unlikely-arg-type")
+    @Test
+    public void testGetWithGenericObject() {
+        UnsettledMap<DeliveryType> tracker = createMap();
+
+        tracker.put(0, new DeliveryType(0));
+
+        assertNull(tracker.get("foo"));
     }
 
     @Test
@@ -205,6 +242,7 @@ public class UnsettledMapTest {
         assertEquals(3, tracker.size());
     }
 
+    @SuppressWarnings("unlikely-arg-type")
     @Test
     public void testContainsValue() {
         UnsettledMap<DeliveryType> tracker = createMap();
@@ -217,6 +255,8 @@ public class UnsettledMapTest {
         assertFalse(tracker.containsValue(new DeliveryType(4)));
 
         assertEquals(3, tracker.size());
+
+        assertFalse(tracker.containsValue("foo"));
     }
 
     @Test
@@ -283,10 +323,7 @@ public class UnsettledMapTest {
 
         tracker.put(0, new DeliveryType(0));
 
-        try {
-            tracker.remove("foo");
-            fail("Should not accept incompatible types");
-        } catch (ClassCastException ccex) {}
+        assertNull(tracker.remove("foo"));
     }
 
     @Test
@@ -355,6 +392,34 @@ public class UnsettledMapTest {
         tracker.put(8, new DeliveryType(8));
 
         assertEquals(6, tracker.size());
+    }
+
+    @Test
+    public void testRemoveOneFromTail() {
+        UnsettledMap<DeliveryType> tracker = createMap(2, 10);
+
+        for (int i = 0; i < 10; ++i) {
+            tracker.put(i, new DeliveryType(i));
+        }
+
+        assertNotNull(tracker.remove(1)); // Right after tail value of zero
+
+        assertEquals(0, tracker.get(0).getDeliveryId());
+        assertEquals(9, tracker.get(9).getDeliveryId());
+    }
+
+    @Test
+    public void testRemoveOneFromHead() {
+        UnsettledMap<DeliveryType> tracker = createMap(2, 10);
+
+        for (int i = 0; i < 10; ++i) {
+            tracker.put(i, new DeliveryType(i));
+        }
+
+        assertNotNull(tracker.remove(8)); // Right before head of the list value nine
+
+        assertEquals(0, tracker.get(0).getDeliveryId());
+        assertEquals(9, tracker.get(9).getDeliveryId());
     }
 
     @Test
@@ -751,6 +816,26 @@ public class UnsettledMapTest {
     }
 
     @Test
+    public void testForEachBiConsumerDeliveryIteratesOverLargeSeriesOfDeliveries() {
+        UnsettledMap<DeliveryType> tracker = createMap();
+        assertEquals(0, tracker.size());
+
+        final int COUNT = 4080;
+
+        for (int i = 0; i < COUNT; ++i) {
+            tracker.put(i, new DeliveryType(i));
+        }
+
+        assertEquals(COUNT, tracker.size());
+
+        final AtomicInteger index = new AtomicInteger();
+
+        tracker.forEach((deliveryId, delivery) -> index.incrementAndGet());
+
+        assertEquals(index.get(), COUNT);
+    }
+
+    @Test
     public void testRangedForEachDeliveryIteratesOverSmallSeriesOfDeliveries() {
         UnsettledMap<DeliveryType> tracker = createMap();
         assertEquals(0, tracker.size());
@@ -787,9 +872,10 @@ public class UnsettledMapTest {
 
         tracker.forEach(Integer.MAX_VALUE, Integer.MAX_VALUE + 2, (delivery) -> index.incrementAndGet());
 
-        assertEquals(index.get(), 3);
+        assertEquals(3, index.get());
     }
 
+    @SuppressWarnings("unlikely-arg-type")
     @Test
     public void testValuesCollection() {
         UnsettledMap<DeliveryType> tracker = createMap();
@@ -804,6 +890,15 @@ public class UnsettledMapTest {
         assertEquals(4, values.size());
         assertFalse(values.isEmpty());
         assertSame(values, tracker.values());
+        assertFalse(values.contains("foo"));
+        assertTrue(values.contains(new DeliveryType(3)));
+        assertTrue(values.remove(new DeliveryType(3)));
+        assertFalse(values.remove(new DeliveryType(3)));
+        assertFalse(values.contains(new DeliveryType(3)));
+
+        values.clear();
+        assertEquals(0, values.size());
+        assertTrue(values.isEmpty());
     }
 
     @Test
@@ -918,6 +1013,7 @@ public class UnsettledMapTest {
         }
     }
 
+    @SuppressWarnings("unlikely-arg-type")
     @Test
     public void testKeySetReturned() {
         UnsettledMap<DeliveryType> tracker = createMap();
@@ -932,6 +1028,18 @@ public class UnsettledMapTest {
         assertEquals(4, keys.size());
         assertFalse(keys.isEmpty());
         assertSame(keys, tracker.keySet());
+
+        final UnsignedInteger VALUE = UnsignedInteger.valueOf(3);
+
+        assertFalse(keys.contains("foo"));
+        assertTrue(keys.contains(VALUE));
+        assertTrue(keys.remove(VALUE));
+        assertFalse(keys.remove(VALUE));
+        assertFalse(keys.contains(VALUE));
+
+        keys.clear();
+        assertEquals(0, keys.size());
+        assertTrue(keys.isEmpty());
     }
 
     @Test
@@ -1150,7 +1258,7 @@ public class UnsettledMapTest {
     }
 
     @Test
-    public void TestKeySetRetainAllFromCollectionWhenMapHasCustomBucketsAndRetainedIsInLastBucket() {
+    public void testKeySetRetainAllFromCollectionWhenMapHasCustomBucketsAndRetainedIsInLastBucket() {
         // Start with three buckets of size three
         UnsettledMap<DeliveryType> tracker = createMap(3, 3);
 
@@ -1181,6 +1289,7 @@ public class UnsettledMapTest {
         assertEquals(0, tracker.size());
     }
 
+    @SuppressWarnings("unlikely-arg-type")
     @Test
     public void tesEntrySetReturned() {
         UnsettledMap<DeliveryType> tracker = createMap();
@@ -1195,6 +1304,24 @@ public class UnsettledMapTest {
         assertEquals(4, entries.size());
         assertFalse(entries.isEmpty());
         assertSame(entries, tracker.entrySet());
+
+        final UnsettledMap.ImmutableUnsettledTrackingkMapEntry<DeliveryType> entry =
+            new UnsettledMap.ImmutableUnsettledTrackingkMapEntry<DeliveryType>(3, new DeliveryType(3));
+
+        assertEquals(3, entry.getPrimitiveKey());
+        assertEquals(3, entry.getValue().getDeliveryId());
+        assertThrows(UnsupportedOperationException.class, () -> entry.setValue(new DeliveryType(4)));
+
+        assertFalse(entries.contains("foo"));
+        assertFalse(entries.remove("foo"));
+        assertTrue(entries.contains(entry));
+        assertTrue(entries.remove(entry));
+        assertFalse(entries.remove(entry));
+        assertFalse(entries.contains(entry));
+
+        entries.clear();
+        assertEquals(0, entries.size());
+        assertTrue(entries.isEmpty());
     }
 
     @Test
@@ -1366,6 +1493,7 @@ public class UnsettledMapTest {
         final int ITERATIONS = 8192;
 
         try {
+
             for (int i = 0; i < ITERATIONS; ++i) {
                 tracker.put(UnsignedInteger.valueOf(i), new DeliveryType(i));
             }
@@ -1378,7 +1506,7 @@ public class UnsettledMapTest {
                 tracker.remove(UnsignedInteger.valueOf(c));
             }
         } catch (Throwable error) {
-            dumpRandomDataSet(ITERATIONS, true);
+            dumpRandomDataSet(ITERATIONS, seed, true);
             throw error;
         }
     }
@@ -1398,7 +1526,7 @@ public class UnsettledMapTest {
                 tracker.remove(UnsignedInteger.valueOf(c));
             }
         } catch (Throwable error) {
-            dumpRandomDataSet(ITERATIONS, true);
+            dumpRandomDataSet(ITERATIONS, seed, true);
             throw error;
         }
     }
@@ -1418,7 +1546,7 @@ public class UnsettledMapTest {
                 tracker.remove(UnsignedInteger.valueOf(c));
             }
         } catch (Throwable error) {
-            dumpRandomDataSet(ITERATIONS, true);
+            dumpRandomDataSet(ITERATIONS, seed, true);
             throw error;
         }
     }
@@ -1498,7 +1626,7 @@ public class UnsettledMapTest {
 
             assertTrue(tracker.isEmpty());
         } catch (Throwable error) {
-            dumpRandomDataSet(ITERATIONS, true);
+            dumpRandomDataSet(ITERATIONS, seed, true);
             throw error;
         }
     }
@@ -1536,7 +1664,7 @@ public class UnsettledMapTest {
 
             assertTrue(tracker.isEmpty());
         } catch (Throwable error) {
-            dumpRandomDataSet(ITERATIONS, true);
+            dumpRandomDataSet(ITERATIONS, seed, true);
             throw error;
         }
     }
@@ -1575,7 +1703,7 @@ public class UnsettledMapTest {
 
             assertTrue(tracker.isEmpty());
         } catch (Throwable error) {
-            dumpRandomDataSet(ITERATIONS, true);
+            dumpRandomDataSet(ITERATIONS, seed, true);
             throw error;
         }
     }
@@ -1610,7 +1738,7 @@ public class UnsettledMapTest {
 
             assertTrue(tracker.isEmpty());
         } catch (Throwable error) {
-            dumpRandomDataSet(ITERATIONS, true);
+            dumpRandomDataSet(ITERATIONS, seed, true);
             throw error;
         }
     }
@@ -1639,7 +1767,7 @@ public class UnsettledMapTest {
 
                 assertTrue(tracker.isEmpty());
             } catch (Throwable error) {
-                dumpRandomDataSet(ITERATIONS, true);
+                dumpRandomDataSet(ITERATIONS, seed, true);
                 throw error;
             }
         }
@@ -1672,7 +1800,7 @@ public class UnsettledMapTest {
 
                 assertTrue(tracker.isEmpty());
             } catch (Throwable error) {
-                dumpRandomDataSet(ITERATIONS, true);
+                dumpRandomDataSet(ITERATIONS, seed, true);
                 throw error;
             }
         }
@@ -1713,7 +1841,17 @@ public class UnsettledMapTest {
         m1.put(UnsignedInteger.valueOf(1), new DeliveryType(1));
         m2.put(UnsignedInteger.valueOf(1), new DeliveryType(1));
         assertTrue(m1.equals(m2), "Maps should be equal 7");
-        assertTrue(m2.equals(m1), "Maps should be equal 7");
+        assertTrue(m2.equals(m1), "Maps should be equal 8");
+        assertTrue(m1.equals(m1), "Maps should be equal 9");
+
+        assertNotEquals(m2, "foo", "Maps should not be equal 10");
+
+        // comparing UnsettledMap3 with different sizes
+        m1 = createMap();
+        m2 = createMap();
+
+        m1.put(UnsignedInteger.valueOf(1), new DeliveryType(1));
+        assertNotEquals(m1, m2, "Maps should not be equal 11");
     }
 
     @Test
@@ -1830,6 +1968,26 @@ public class UnsettledMapTest {
     }
 
     @Test
+    public void testRemoveEachWithRangeThatMatchesMany() {
+        final UnsettledMap<DeliveryType> map = createMap(5, 50);
+
+        final int[] entries = new int[] { 512, 513, 512, 513, 512, 513 };
+
+        for(int i : entries) {
+            map.put(i, new DeliveryType(i));
+        }
+
+        assertEquals(entries.length, map.size());
+
+        final AtomicInteger removed = new AtomicInteger();
+
+        map.removeEach(512, 513, (delivery) -> removed.incrementAndGet());
+
+        assertEquals(2, removed.get());
+        assertEquals(entries.length - 2, map.size());
+    }
+
+    @Test
     public void testRemoveAllEntriesFromFirstBucket() {
         doTestRemoveEach(0, 15);
     }
@@ -1882,6 +2040,257 @@ public class UnsettledMapTest {
     }
 
     @Test
+    public void testRemoveEachWithRangeMuchLargerThanContainedEntries() {
+        final UnsettledMap<DeliveryType> map = createMap();
+        final int NUM_ENTRIES = 100;
+
+        map.put(0, new DeliveryType(0));
+
+        for (int i = 0, j = 512; i < NUM_ENTRIES; ++i, j += 25) {
+            map.put(j, new DeliveryType(j));
+        }
+
+        map.put(UnsignedInteger.MAX_VALUE.intValue(), new DeliveryType(UnsignedInteger.MAX_VALUE.intValue()));
+
+        assertEquals(NUM_ENTRIES + 2, map.size());
+
+        final AtomicInteger removed = new AtomicInteger();
+
+        map.removeEach(0, UnsignedInteger.MAX_VALUE.intValue(), (delivery) -> removed.incrementAndGet());
+
+        assertEquals(NUM_ENTRIES + 2, removed.get());
+        assertEquals(0, map.size());
+    }
+
+    @Test
+    public void testRemoveEachWhereLastNotPresentAndNextValuesAreOverflow() {
+        final UnsettledMap<DeliveryType> map = createMap();
+        final int NUM_ENTRIES = 100;
+
+        map.put(0, new DeliveryType(0));
+
+        for (int i = 0, j = 512; i < NUM_ENTRIES; ++i, j += 25) {
+            map.put(j, new DeliveryType(j));
+        }
+
+        map.put(65534, new DeliveryType(65534));
+
+        map.put(0, new DeliveryType(0));
+        map.put(1, new DeliveryType(1));
+        map.put(2, new DeliveryType(2));
+
+        assertEquals(NUM_ENTRIES + 5, map.size());
+
+        final AtomicInteger removed = new AtomicInteger();
+
+        map.removeEach(0, 65535, (delivery) -> removed.incrementAndGet());
+
+        assertEquals(NUM_ENTRIES + 5, removed.get());
+        assertEquals(0, map.size());
+    }
+
+    @Test
+    public void testRemoveEachEntireDeliveryIdRangeTwoBuckets() {
+        final UnsettledMap<DeliveryType> map = createMap(3, 128);
+        final int NUM_ENTRIES = UnsignedByte.MAX_VALUE.intValue();
+
+        for (int i = 0; i < NUM_ENTRIES; ++i) {
+            map.put(i, new DeliveryType(i));
+        }
+
+        final AtomicInteger removed = new AtomicInteger();
+
+        map.removeEach(0, NUM_ENTRIES, (delivery) -> removed.incrementAndGet());
+
+        assertEquals(NUM_ENTRIES, removed.get());
+        assertEquals(0, map.size());
+    }
+
+    @Test
+    public void testRemoveEachEntireDeliveryIdRange() {
+        final UnsettledMap<DeliveryType> map = createMap();
+        final int NUM_ENTRIES = UnsignedShort.MAX_VALUE.intValue();
+
+        for (int i = 0; i < NUM_ENTRIES; ++i) {
+            map.put(i, new DeliveryType(i));
+        }
+
+        final AtomicInteger removed = new AtomicInteger();
+
+        map.removeEach(0, NUM_ENTRIES, (delivery) -> removed.incrementAndGet());
+
+        assertEquals(NUM_ENTRIES, removed.get());
+        assertEquals(0, map.size());
+    }
+
+    @Test
+    public void testForEachWithRangeMuchLargerThanContainedEntries() {
+        final UnsettledMap<DeliveryType> map = createMap();
+        final int NUM_ENTRIES = 100;
+
+        map.put(0, new DeliveryType(0));
+
+        for (int i = 0, j = 512; i < NUM_ENTRIES; ++i, j += 25) {
+            map.put(j, new DeliveryType(j));
+        }
+
+        map.put(UnsignedInteger.MAX_VALUE.intValue(), new DeliveryType(UnsignedInteger.MAX_VALUE.intValue()));
+
+        assertEquals(NUM_ENTRIES + 2, map.size());
+
+        final AtomicInteger traversed = new AtomicInteger();
+
+        map.forEach(0, UnsignedInteger.MAX_VALUE.intValue(), (delivery) -> traversed.incrementAndGet());
+
+        assertEquals(NUM_ENTRIES + 2, traversed.get());
+        assertEquals(NUM_ENTRIES + 2, map.size());
+    }
+
+    @Test
+    public void testForEachCoversElementsInBetweenGivenRangeInOtherBuckets() {
+        final UnsettledMap<DeliveryType> map = createMap(5, 10);
+        final int NUM_ENTRIES = 100;
+
+        for (int i = 0, j = 512; i < NUM_ENTRIES; ++i, j += 25) {
+            map.put(j, new DeliveryType(j));
+        }
+
+        assertEquals(NUM_ENTRIES, map.size());
+
+        final AtomicInteger traversed = new AtomicInteger();
+
+        map.forEach(0, UnsignedInteger.MAX_VALUE.intValue(), (delivery) -> traversed.incrementAndGet());
+
+        assertEquals(NUM_ENTRIES, traversed.get());
+        assertEquals(NUM_ENTRIES, map.size());
+    }
+
+    @Test
+    public void testForEachWhereLastValueNotPresentButGreaterValuesAre() {
+        final UnsettledMap<DeliveryType> map = createMap();
+        final int NUM_ENTRIES = 100;
+
+        map.put(0, new DeliveryType(0));
+
+        for (int i = 0, j = 512; i < NUM_ENTRIES; ++i, j += 25) {
+            map.put(j, new DeliveryType(j));
+        }
+
+        map.put(65534, new DeliveryType(65534));
+        map.put(65536, new DeliveryType(65536));
+        map.put(65537, new DeliveryType(65537));
+
+        map.put(UnsignedInteger.MAX_VALUE.intValue(), new DeliveryType(UnsignedInteger.MAX_VALUE.intValue()));
+
+        assertEquals(NUM_ENTRIES + 5, map.size());
+
+        final AtomicInteger traversed = new AtomicInteger();
+
+        map.forEach(0, 65535, (delivery) -> traversed.incrementAndGet());
+
+        assertEquals(NUM_ENTRIES + 2, traversed.get());
+    }
+
+    @Test
+    public void testForEachWhereLastNotPresentAndNextValuesAreOverflow() {
+        final UnsettledMap<DeliveryType> map = createMap();
+        final int NUM_ENTRIES = 100;
+
+        map.put(0, new DeliveryType(0));
+
+        for (int i = 0, j = 512; i < NUM_ENTRIES; ++i, j += 25) {
+            map.put(j, new DeliveryType(j));
+        }
+
+        map.put(65534, new DeliveryType(65534));
+
+        map.put(0, new DeliveryType(0));
+        map.put(1, new DeliveryType(1));
+        map.put(2, new DeliveryType(2));
+
+        assertEquals(NUM_ENTRIES + 5, map.size());
+
+        final AtomicInteger traversed = new AtomicInteger();
+
+        map.forEach(0, 65535, (delivery) -> traversed.incrementAndGet());
+
+        assertEquals(NUM_ENTRIES + 5, traversed.get());
+    }
+
+    @Test
+    public void testForEachWithRangeThatWrapped() {
+        final UnsettledMap<DeliveryType> map = createMap(5, 50);
+
+        final int[] entries = new int[] { 512, 513, 0, 1, 2, 3, UnsignedInteger.MAX_VALUE.intValue() };
+
+        for(int i : entries) {
+            map.put(i, new DeliveryType(i));
+        }
+
+        assertEquals(entries.length, map.size());
+
+        final AtomicInteger traversed = new AtomicInteger();
+
+        map.forEach(0, UnsignedInteger.MAX_VALUE.intValue(), (delivery) -> traversed.incrementAndGet());
+
+        assertEquals(entries.length, traversed.get());
+        assertEquals(entries.length, map.size());
+    }
+
+    @Test
+    public void testForEachFindsNoValues() {
+        final int afterLast = uintArray.length + 1; // Entries are one based
+
+        final AtomicBoolean traversed = new AtomicBoolean();
+
+        tracker.forEach(afterLast, afterLast + 10, (delivery) -> traversed.set(true));
+
+        assertFalse(traversed.get());
+    }
+
+    @Test
+    public void testForEachRangeFindsOnlyLastValue() {
+        final int lastEntry = uintArray.length; // Entries are one based
+
+        final AtomicInteger traversed = new AtomicInteger();
+
+        tracker.forEach(lastEntry, lastEntry, (delivery) -> traversed.incrementAndGet());
+
+        assertEquals(1, traversed.get());
+    }
+
+    @Test
+    public void testForEachRangedLastValueAndRangeOutsideOfActualEntries() {
+        final int lastEntry = uintArray.length; // Entries are one based
+
+        final AtomicInteger traversed = new AtomicInteger();
+
+        tracker.forEach(lastEntry, lastEntry + 10, (delivery) -> traversed.incrementAndGet());
+
+        assertEquals(1, traversed.get());
+    }
+
+    @Test
+    public void testForEachWithRangeThatMatchesMany() {
+        final UnsettledMap<DeliveryType> map = createMap(5, 50);
+
+        final int[] entries = new int[] { 512, 513, 512, 513, 512, 513 };
+
+        for(int i : entries) {
+            map.put(i, new DeliveryType(i));
+        }
+
+        assertEquals(entries.length, map.size());
+
+        final AtomicInteger traversed = new AtomicInteger();
+
+        map.forEach(512, 513, (delivery) -> traversed.incrementAndGet());
+
+        assertEquals(2, traversed.get());
+        assertEquals(entries.length, map.size());
+    }
+
+    @Test
     public void testRemoveAllEntriesInSmallChunks() {
         final AtomicInteger removed = new AtomicInteger();
 
@@ -1924,7 +2333,615 @@ public class UnsettledMapTest {
         assertEquals(lastValue.intValue() + 1, entries.next().intValue());
     }
 
-    protected void dumpRandomDataSet(int iterations, boolean bounded) {
+    @Test
+    public void testRemoveFromMiddleBucket() {
+        final int numBuckets = 5;
+        final int bucketSize = 10;
+        final int numEntries = numBuckets * bucketSize;
+
+        final UnsettledMap<DeliveryType> map = createMap(numBuckets, bucketSize);
+
+        for (int i = 0; i < numEntries; ++i) {
+            map.put(i, new DeliveryType(i));
+        }
+
+        assertEquals(numEntries, map.size());
+
+        int position = bucketSize + (bucketSize / 2);
+        int lastValue = 0;
+
+        // Remove from center of bucket two into bucket three until a compaction event should occur.
+        for (int i = 0; i < bucketSize + 3; ++i) {
+            lastValue = map.get(position).getDeliveryId();
+            map.remove(position++);
+        }
+
+        assertEquals(lastValue + 1, map.get(position).getDeliveryId());
+    }
+
+    @Test
+    public void testRepeatedRemoveOldestHotPath() {
+        UnsettledMap<DeliveryType> tracker = createMap();
+
+        final int COUNT = 10000;
+
+        for (int i = 0; i < COUNT; i++) {
+            tracker.put(i, new DeliveryType(i));
+        }
+
+        for (int i = 0; i < COUNT; i++) {
+            DeliveryType removed = tracker.remove(i);
+            assertNotNull(removed);
+            assertEquals(i, removed.getDeliveryId());
+        }
+
+        assertTrue(tracker.isEmpty());
+    }
+
+    @Test
+    public void testRemoveOldestAcrossBucketBoundaries() {
+        UnsettledMap<DeliveryType> tracker = createMap(3, 4);
+
+        for (int i = 0; i < 12; i++) {
+            tracker.put(i, new DeliveryType(i));
+        }
+
+        for (int i = 0; i < 12; i++) {
+            assertEquals(i, tracker.remove(i).getDeliveryId());
+        }
+
+        assertEquals(0, tracker.size());
+    }
+
+    @Test
+    public void testSlidingWindowPutRemoveOldest() {
+        UnsettledMap<DeliveryType> tracker = createMap();
+
+        int window = 1024;
+
+        for (int i = 0; i < window; i++) {
+            tracker.put(i, new DeliveryType(i));
+        }
+
+        for (int i = 0; i < 5000; i++) {
+            tracker.put(window + i, new DeliveryType(window + i));
+            tracker.remove(i);
+        }
+
+        assertEquals(window, tracker.size());
+    }
+
+    @Test
+    public void testMixedTailAndMiddleRemovals() {
+        UnsettledMap<DeliveryType> tracker = createMap();
+
+        for (int i = 0; i < 1000; i++) {
+            tracker.put(i, new DeliveryType(i));
+        }
+
+        tracker.remove(0);     // tail
+        tracker.remove(500);   // middle
+        tracker.remove(1);     // tail again
+
+        assertFalse(tracker.containsKey(0));
+        assertFalse(tracker.containsKey(1));
+        assertFalse(tracker.containsKey(500));
+        assertNotNull(tracker.get(499));
+    }
+
+    @Test
+    public void testDuplicateIdsAfterWrap() {
+        UnsettledMap<DeliveryType> tracker = createMap();
+
+        int nearMax = Integer.MAX_VALUE - 50;
+
+        for (int i = 0; i < 100; i++) {
+            tracker.put(nearMax + i, new DeliveryType(nearMax + i));
+        }
+
+        // Wrap
+        for (int i = 0; i < 100; i++) {
+            tracker.put(i, new DeliveryType(i));
+        }
+
+        // Validate both ranges exist
+        assertNotNull(tracker.get(nearMax + 10));
+        assertNotNull(tracker.get(10));
+    }
+
+    @Test
+    public void testRemoveDuplicateIdRemovesCorrectInstance() {
+        UnsettledMap<DeliveryType> tracker = createMap();
+
+        tracker.put(1, new DeliveryType(1));   // old
+        // simulate wrap
+        tracker.put(1, new DeliveryType(1));   // new
+
+        tracker.remove(1);
+
+        // One should still remain
+        assertTrue(tracker.containsKey(1));
+    }
+
+    @Test
+    public void testRemoveEachWithNonZeroReadOffset() {
+        UnsettledMap<DeliveryType> tracker = createMap(2, 16);
+
+        for (int i = 0; i < 32; i++) {
+            tracker.put(i, new DeliveryType(i));
+        }
+
+        for (int i = 0; i < 5; i++) {
+            tracker.remove(i);
+        }
+
+        tracker.removeEach(5, 20, d -> {});
+
+        for (int i = 5; i <= 20; i++) {
+            assertFalse(tracker.containsKey(i));
+        }
+    }
+
+    @Test
+    public void testIteratorRemoveAllSequentially() {
+        UnsettledMap<DeliveryType> tracker = createMap();
+
+        for (int i = 0; i < 1000; i++) {
+            tracker.put(i, new DeliveryType(i));
+        }
+
+        Iterator<?> it = tracker.values().iterator();
+
+        while (it.hasNext()) {
+            it.next();
+            it.remove();
+        }
+
+        assertTrue(tracker.isEmpty());
+    }
+
+    @Test
+    public void testCompactionAtLowWaterMarkBoundary() {
+        UnsettledMap<DeliveryType> tracker = createMap(2, 16);
+
+        for (int i = 0; i < 32; i++) {
+            tracker.put(i, new DeliveryType(i));
+        }
+
+        for (int i = 0; i < 12; i++) {
+            tracker.remove(i);
+        }
+
+        // Now near low water mark
+        tracker.remove(12);
+
+        // Validate still consistent
+        assertNotNull(tracker.get(20));
+    }
+
+    @Test
+    public void testRemoveEachClearsThenReuseMap() {
+        UnsettledMap<DeliveryType> tracker = createMap();
+
+        for (int i = 0; i < 100; i++) {
+            tracker.put(i, new DeliveryType(i));
+        }
+
+        tracker.removeEach(0, 200, d -> {});
+
+        assertTrue(tracker.isEmpty());
+
+        tracker.put(999, new DeliveryType(999));
+
+        assertEquals(1, tracker.size());
+        assertNotNull(tracker.get(999));
+    }
+
+    @Test
+    public void testRecycleBucketWhenTailHasWrapped() {
+        final UnsettledMap<DeliveryType> tracker = createMap(5, 2);
+
+        // Fill all 5 buckets: bucket0=[0,1], bucket1=[2,3], bucket2=[4,5], bucket3=[6,7], bucket4=[8,9]
+        for (int i = 0; i < 10; ++i) {
+            tracker.put(i, new DeliveryType(i));
+        }
+        assertEquals(10, tracker.size());
+
+        // Remove 0..5 => drains bucket0, bucket1, bucket2 fully (advances tail to bucket3)
+        for (int i = 0; i < 6; ++i) {
+            assertNotNull(tracker.remove(i), "Expected to remove existing id: " + i);
+        }
+        assertEquals(4, tracker.size()); // remaining: 6,7,8,9
+
+        // Add 10..13:
+        // bucket4 is full so putting 10 advances head 4->0 (wrap) and uses bucket0 again
+        // then 12 advances head 0->1 and uses bucket1 again
+        for (int i = 10; i < 14; ++i) {
+            tracker.put(i, new DeliveryType(i));
+        }
+        assertEquals(8, tracker.size()); // now: 6,7,8,9,10,11,12,13
+
+        // Now remove entries that occupy bucket index 0 (10,11) fully.
+        // This should recycle bucket index 0 while tail is at 3 and head at 1:
+        // tail > head and index(0) < tail(3) => final else branch in recycleBucket.
+        tracker.removeEach(10, 11, d -> {});
+
+        assertEquals(6, tracker.size());
+        assertFalse(tracker.containsKey(10));
+        assertFalse(tracker.containsKey(11));
+        assertTrue(tracker.containsKey(12));
+        assertTrue(tracker.containsKey(13));
+
+        // Validate map remains consistent and all remaining values are removable.
+        final int[] remaining = { 6, 7, 8, 9, 12, 13 };
+
+        for (int id : remaining) {
+            DeliveryType removed = tracker.remove(id);
+            assertNotNull(removed, "Expected to remove existing id: " + id);
+            assertEquals(id, removed.getDeliveryId());
+        }
+
+        assertTrue(tracker.isEmpty());
+    }
+
+    @Test
+    public void testIteratorRemoveTriggeringCompactionFromHeadBucket() {
+        UnsettledMap<DeliveryType> tracker = createMap(3, 10); // 30 Entries of capacity
+
+        // Fill the map to capacity but no further should remain at three buckets
+        for (int i = 0; i < 30; i++) {
+            tracker.put(i, new DeliveryType(i));
+        }
+
+        Iterator<DeliveryType> it = tracker.values().iterator();
+
+        // Move to the middle before we start to remove entries
+        for (int i = 0; i < 15; i++) {
+            it.next();
+        }
+
+        DeliveryType lastReturned = null;
+
+        // Remove ten elements which should trigger a compaction and a roll
+        // forward of data in the center bucket.
+        for (int i = 0; i < 10; i++) {
+            it.remove();
+            lastReturned = it.next();
+        }
+
+        for (int i = 24; i < 30; i++) {
+            assertEquals(lastReturned.getDeliveryId(), i);
+            if (i < 29) {
+                lastReturned = it.next(); // Don't pass the end.
+            }
+        }
+    }
+
+    @Test
+    public void testIteratorRemoveTriggeringCompactionToHeadBucket() {
+        UnsettledMap<DeliveryType> tracker = createMap(3, 10); // 30 Entries of capacity
+
+        // Fill the map to capacity but no further should remain at three buckets
+        for (int i = 0; i < 30; i++) {
+            tracker.put(i, new DeliveryType(i));
+        }
+
+        Iterator<UnsignedInteger> it = tracker.keySet().iterator();
+
+        // Move to the middle before we start to remove entries
+        for (int i = 0; i < 25; i++) {
+            it.next();
+        }
+
+        // Should now be positioned in the head bucket and we remove the last five entries
+        for (int i = 0; i < 5; i++) {
+            assertEquals(25 + i,  it.next().intValue());
+            it.remove();
+        }
+
+        Iterator<DeliveryType> values = tracker.values().iterator();
+
+        for (int i = 0; i < 10; i++) {
+            values.next();
+        }
+
+        for (int i = 0; i < 5; i++) {
+            values.next();
+            values.remove();
+        }
+    }
+
+    @Test
+    public void testIteratorRemoveWhenHeadBucketShouldHaveWrappedAround() {
+        UnsettledMap<DeliveryType> tracker = createMap(3, 10); // 30 Entries of capacity
+
+        // Fill the map to capacity but no further should remain at three buckets
+        for (int i = 0; i < 30; i++) {
+            tracker.put(i, new DeliveryType(i));
+        }
+
+        // Remove the first 20 so head and tail are now the same.
+        for (int i = 0; i < 20; i++) {
+            tracker.remove(i);
+        }
+
+        // Put another 20 in so that head wraps to the slot behind tail
+        for (int i = 30; i < 50; i++) {
+            tracker.put(i, new DeliveryType(i));
+        }
+
+        assertEquals(30, tracker.size());
+
+        // Remove five from head so that when we remove five from the middle bucket it rolls into head
+        tracker.remove(40);
+        tracker.remove(41);
+        tracker.remove(42);
+        tracker.remove(43);
+        tracker.remove(44);
+
+        Iterator<UnsignedInteger> it = tracker.keySet().iterator();
+
+        for (int i = 0; i < 15; ++i) {
+            assertEquals(20 + i, it.next().intValue());
+        }
+
+        for (int i = 0; i < 5; ++i) {
+            assertEquals(35 + i, it.next().intValue());
+            it.remove();
+        }
+
+        for (int i = 0; i < 5; ++i) {
+            assertEquals(45 + i, it.next().intValue());
+        }
+    }
+
+    @Test
+    public void testIteratorRemoveBeyondDefaultBucketSizeDoesNotThrow() {
+        final int bucketSize = 512;
+        final UnsettledMap<DeliveryType> tracker = createMap(2, bucketSize);  // uses test helper
+
+        for (int i = 0; i < bucketSize; ++i) {
+            tracker.put(i, new DeliveryType(i));
+        }
+
+        final Iterator<DeliveryType> it = tracker.values().iterator();
+
+        DeliveryType removed = null;
+        for (int i = 0; i <= 300; ++i) {
+            removed = it.next();
+        }
+
+        try {
+            it.remove();
+        } catch (IndexOutOfBoundsException ex) {
+            fail("Iterator remove threw IndexOutOfBoundsException for bucketSize=" + bucketSize +
+                 " at index > 256 which is beyond the default bucket capacity value. ");
+        }
+
+        assertNotNull(removed);
+        assertNull(tracker.get(removed.getDeliveryId()));
+        assertEquals(bucketSize - 1, tracker.size());
+    }
+
+    @Test
+    public void testRecycleHeadBucketDoesNotLoseEarlierEntries() {
+        final UnsettledMap<DeliveryType> tracker = createMap(8, 4);  // 8 buckets of 4 entries each
+
+        // Fill exactly 3 buckets: [0..11]. Head should be at the 3rd bucket.
+        for (int i = 0; i < 12; ++i) {
+            tracker.put(i, new DeliveryType(i));
+        }
+
+        assertEquals(12, tracker.size());
+
+        // Remove the last bucket's range [8..11] which should fully drain the head bucket,
+        // forcing recycleBucket(head).
+        tracker.removeEach(8, 11, d -> { });
+
+        // Now [0..7] must still exist
+        assertEquals(8, tracker.size());
+
+        for (int i = 0; i < 8; ++i) {
+            assertNotNull(tracker.get(i), "Missing entry " + i + " after recycling head bucket");
+        }
+        for (int i = 8; i < 12; ++i) {
+            assertNull(tracker.get(i), "Entry " + i + " should have been removed");
+        }
+
+        // Ensure map still accepts new writes after head recycling.
+        tracker.put(12, new DeliveryType(12));
+        assertNotNull(tracker.get(12));
+        assertEquals(9, tracker.size());
+    }
+
+    @Test
+    public void testRecycleBucketInWrappedSpanDoesNotCorruptMap() {
+        // 5 buckets of size 2 => easy to force wrap.
+        final UnsettledMap<DeliveryType> tracker = createMap(5, 2);
+
+        // Fill all 5 buckets: IDs 0..9
+        for (int i = 0; i < 10; ++i) {
+            tracker.put(i, new DeliveryType(i));
+        }
+
+        // Drain 0..5 => recycles buckets at the front, tail advances forward
+        for (int i = 0; i < 6; ++i) {
+            assertNotNull(tracker.remove(i));
+        }
+
+        // Add 10..13 => forces head wrap-around into earlier indices
+        for (int i = 10; i < 14; ++i) {
+            tracker.put(i, new DeliveryType(i));
+        }
+
+        // Now remove a bucket that is *not* tail and not head, but sits in the wrapped portion.
+        // This should recycle an internal bucket and still keep all remaining IDs accessible.
+        tracker.removeEach(10, 11, d -> { });
+
+        assertNull(tracker.get(10));
+        assertNull(tracker.get(11));
+        assertNotNull(tracker.get(12));
+        assertNotNull(tracker.get(13));
+
+        // Verify remaining removals are consistent and no entries were lost
+        final int[] remaining = { 6, 7, 8, 9, 12, 13 };
+
+        for (int id : remaining) {
+            assertNotNull(tracker.remove(id), "Expected to remove remaining id: " + id);
+        }
+
+        assertTrue(tracker.isEmpty());
+    }
+
+    @Test
+    public void testRemoveFromMiddleDoesNotLoseTailEntriesWhenCompactionTriggered() {
+        // Use small bucketSize so bucketLowWaterMark is small and compaction is more likely.
+        final UnsettledMap<DeliveryType> tracker = createMap(6, 10);  // low-water ≈ 3
+
+        // Fill enough to create multiple buckets.
+        for (int i = 0; i < 60; ++i) {
+            tracker.put(i, new DeliveryType(i));
+        }
+
+        // Make tail bucket sparse (but not empty) so tryCompact(tail) has a chance to do something.
+        for (int i = 0; i < 8; ++i) {
+            assertNotNull(tracker.remove(i));
+        }
+
+        // Now remove from a middle region (not tail) and ensure the early tail-adjacent IDs remain.
+        // If removeValue incorrectly compacts tail and corrupts the ring, these can disappear.
+        assertNotNull(tracker.remove(25));  // removal from a non-tail bucket
+
+        // Sanity: nearby entries should still exist
+        assertNotNull(tracker.get(24));
+        assertNull(tracker.get(25));
+        assertNotNull(tracker.get(26));
+
+        // Tail-adjacent entries (8..15) should still exist
+        for (int i = 8; i < 16; ++i) {
+            assertNotNull(tracker.get(i), "Entry " + i + " missing after middle removal/compaction");
+        }
+    }
+
+    @Test
+    public void testRecycleHeadWhenTailNotZeroDoesNotCorruptSpan() {
+        final UnsettledMap<DeliveryType> tracker = createMap(8, 4);
+
+        // Fill 3 buckets worth: 0..11
+        for (int i = 0; i < 12; ++i) {
+            tracker.put(i, new DeliveryType(i));
+        }
+
+        // Drain first bucket completely (0..3) so tail advances away from 0.
+        for (int i = 0; i < 4; ++i) {
+            assertNotNull(tracker.remove(i));
+        }
+
+        // Now map contains 4..11; tail should no longer be 0 internally.
+
+        // Remove the last bucket worth (8..11) to fully empty the head bucket and force
+        // recycleBucket(head).
+        tracker.removeEach(8, 11, d -> {});
+
+        // Remaining should be 4..7 exactly
+        assertEquals(4, tracker.size());
+
+        for (int i = 4; i < 8; ++i) {
+            assertNotNull(tracker.get(i), "Missing " + i + " after head recycle with tail != 0");
+        }
+        for (int i = 8; i < 12; ++i) {
+            assertNull(tracker.get(i), "Expected removed " + i);
+        }
+
+        // Continue using the map to ensure head/tail pointers are still consistent.
+        tracker.put(12, new DeliveryType(12));
+        tracker.put(13, new DeliveryType(13));
+        assertNotNull(tracker.get(12));
+        assertNotNull(tracker.get(13));
+    }
+
+    @Test
+    public void testRemoveFromNonTailTriggersWrongCompactionAndStillPreservesCorrectness() {
+        final UnsettledMap<DeliveryType> tracker = createMap(6, 10);
+
+        // Fill 3 buckets: 0..29
+        for (int i = 0; i < 30; ++i) {
+            tracker.put(i, new DeliveryType(i));
+        }
+
+        // Make tail bucket small (remove 0..6 leaves 7..9 in first bucket => 3 entries == low-water)
+        for (int i = 0; i < 7; ++i) {
+            assertNotNull(tracker.remove(i));
+        }
+
+        // Now remove entries from a *non-tail* bucket to make that bucket sparse too.
+        // Removing these should make the target bucket hit <= low-water and trigger the compaction path.
+        assertNotNull(tracker.remove(15));
+        assertNotNull(tracker.remove(16));
+        assertNotNull(tracker.remove(17));
+
+        // If tryCompact(tail) corrupts the map, these will be missing or inconsistent.
+        for (int i = 7; i < 10; ++i) {
+            assertNotNull(tracker.get(i), "Tail-adjacent entry missing after non-tail removal triggered compaction");
+        }
+        assertNull(tracker.get(15));
+        assertNull(tracker.get(16));
+        assertNull(tracker.get(17));
+        assertNotNull(tracker.get(18));
+    }
+
+    @Test
+    public void testRemoveEachSpanningMultipleBucketRecyclesDoesNotSkipBuckets() {
+        final UnsettledMap<DeliveryType> tracker = createMap(10, 4);
+
+        // Fill 7 buckets worth => 28 entries: 0..27
+        for (int i = 0; i < 28; ++i) {
+            tracker.put(i, new DeliveryType(i));
+        }
+
+        // Remove a span that starts mid-bucket and ends exactly at a bucket boundary.
+        // Buckets: [0..3],[4..7],[8..11],[12..15],[16..19],[20..23],[24..27]
+        // Remove 2..19 covers partial first bucket + full next four buckets.
+        tracker.removeEach(2, 19, d -> {});
+
+        // Keys 2..19 must be gone
+        for (int i = 2; i <= 19; ++i) {
+            assertNull(tracker.get(i), "Expected removed " + i);
+        }
+
+        // Keys outside range must remain
+        for (int i = 0; i < 2; ++i) {
+            assertNotNull(tracker.get(i), "Unexpectedly missing " + i);
+        }
+        for (int i = 20; i < 28; ++i) {
+            assertNotNull(tracker.get(i), "Unexpectedly missing " + i);
+        }
+    }
+
+    @Test
+    public void testIterateOverBucketsThatHaveWrapped() {
+        final UnsettledMap<DeliveryType> tracker = createMap();
+
+        tracker.put(UnsignedInteger.MAX_VALUE.intValue(), new DeliveryType(UnsignedInteger.MAX_VALUE.intValue()));
+        tracker.put(0, new DeliveryType(0));
+        tracker.put(1, new DeliveryType(1));
+
+        assertEquals(3, tracker.size());
+
+        Iterator<UnsignedInteger> iter = tracker.keySet().iterator();
+
+        final int[] expected = { UnsignedInteger.MAX_VALUE.intValue(), 0, 1 };
+
+        int count = 0;
+
+        while (iter.hasNext()) {
+            assertEquals(expected[count++], iter.next().intValue());
+        }
+
+        assertEquals(3, count);
+    }
+
+    protected void dumpRandomDataSet(int iterations, long seed, boolean bounded) {
         final int[] dataSet = new int[iterations];
 
         random.setSeed(seed);
@@ -1937,7 +2954,7 @@ public class UnsettledMapTest {
             }
         }
 
-        LOG.info("Random seed was: {}" , seed);
+        LOG.info("Iterations was {}, Random seed was: {}", iterations , seed);
         LOG.info("Entries in data set: {}", dataSet);
     }
 

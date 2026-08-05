@@ -34,7 +34,7 @@ public class AbstractMechanismTest {
 
         @Override
         public Symbol getName() {
-            return Symbol.valueOf("TEST");
+            return Symbol.getSASLSymbol("TEST");
         }
 
         @Override

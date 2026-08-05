@@ -19,6 +19,7 @@ package org.apache.qpid.protonj2.codec.transport;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -134,16 +135,7 @@ public class BeginTypeCodecTest extends CodecTestSupport {
     }
 
     @Test
-    public void testEncodeDecodeFailsOnMissingIncomingWindow() throws IOException {
-        testEncodeDecodeFailsOnMissingIncomingWindow(false);
-    }
-
-    @Test
-    public void testEncodeDecodeFailsOnMissingIncomingWindowFromStream() throws IOException {
-        testEncodeDecodeFailsOnMissingIncomingWindow(true);
-    }
-
-    private void testEncodeDecodeFailsOnMissingIncomingWindow(boolean fromStream) throws IOException {
+    public void testEncodeFailsOnMissingIncomingWindow() throws IOException {
         ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
 
         final Random random = new Random();
@@ -161,7 +153,152 @@ public class BeginTypeCodecTest extends CodecTestSupport {
         input.setOutgoingWindow(randomeNextOutgoingWindow);
         input.setHandleMax(randomeHandleMax);
 
-        encoder.writeObject(buffer, encoderState, input);
+        assertThrows(EncodeException.class, () -> encoder.writeObject(buffer, encoderState, input));
+    }
+
+    @Test
+    public void testEncodeFailsOnMissingOutgoingWindow() throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        final Random random = new Random();
+        random.setSeed(System.nanoTime());
+
+        final int randomChannel = random.nextInt(65535);
+        final int randomeNextOutgoingId = random.nextInt();
+        final int randomeNextIncomingWindow = random.nextInt();
+        final int randomeHandleMax = random.nextInt();
+
+        Begin input = new Begin();
+
+        input.setRemoteChannel(randomChannel);
+        input.setNextOutgoingId(randomeNextOutgoingId);
+        input.setIncomingWindow(randomeNextIncomingWindow);
+        input.setHandleMax(randomeHandleMax);
+
+        assertThrows(EncodeException.class, () -> encoder.writeObject(buffer, encoderState, input));
+    }
+
+    @Test
+    public void testEncodeFailsOnMissingNextOutgoingId() throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        final Random random = new Random();
+        random.setSeed(System.nanoTime());
+
+        final int randomChannel = random.nextInt(65535);
+        final int randomeNextIncomingWindow = random.nextInt();
+        final int randomeNextOutgoingWindow = random.nextInt();
+        final int randomeHandleMax = random.nextInt();
+
+        Begin input = new Begin();
+
+        input.setRemoteChannel(randomChannel);
+        input.setIncomingWindow(randomeNextIncomingWindow);
+        input.setOutgoingWindow(randomeNextOutgoingWindow);
+        input.setHandleMax(randomeHandleMax);
+
+        assertThrows(EncodeException.class, () -> encoder.writeObject(buffer, encoderState, input));
+    }
+
+    @Test
+    public void testEncodeDecodeFailsOnMissingNextOutgoingId() throws IOException {
+        testEncodeDecodeFailsOnMissingNextOutgoingId(false);
+    }
+
+    @Test
+    public void testEncodeDecodeFailsOnMissingNextOutgoingIdFromStream() throws IOException {
+        testEncodeDecodeFailsOnMissingNextOutgoingId(true);
+    }
+
+    private void testEncodeDecodeFailsOnMissingNextOutgoingId(boolean fromStream) throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        buffer.writeByte((byte) 0); // Described Type Indicator
+        buffer.writeByte(EncodingCodes.SMALLULONG);
+        buffer.writeByte(Begin.DESCRIPTOR_CODE.byteValue());
+        buffer.writeByte(EncodingCodes.LIST8);
+        buffer.writeByte((byte) 5);  // Size
+        buffer.writeByte((byte) 4);  // Count
+        buffer.writeByte(EncodingCodes.NULL);  // Remote Channel
+        buffer.writeByte(EncodingCodes.NULL);  // next outgoing id
+        buffer.writeByte(EncodingCodes.UINT0);  // Incoming window
+        buffer.writeByte(EncodingCodes.UINT0);  // Outgoing window
+
+        if (fromStream) {
+            InputStream stream = new ProtonBufferInputStream(buffer);
+            try {
+                streamDecoder.readObject(stream, streamDecoderState);
+                fail("Should not decode type with invalid encoding");
+            } catch (DecodeException ex) {}
+        } else {
+            try {
+                decoder.readObject(buffer, decoderState);
+                fail("Should not decode type with invalid encoding");
+            } catch (DecodeException ex) {}
+        }
+    }
+
+    @Test
+    public void testEncodeDecodeFailsOnMissingIncomingWindow() throws IOException {
+        testEncodeDecodeFailsOnMissingIncomingWindow(false);
+    }
+
+    @Test
+    public void testEncodeDecodeFailsOnMissingIncomingWindowFromStream() throws IOException {
+        testEncodeDecodeFailsOnMissingIncomingWindow(true);
+    }
+
+    private void testEncodeDecodeFailsOnMissingIncomingWindow(boolean fromStream) throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        buffer.writeByte((byte) 0); // Described Type Indicator
+        buffer.writeByte(EncodingCodes.SMALLULONG);
+        buffer.writeByte(Begin.DESCRIPTOR_CODE.byteValue());
+        buffer.writeByte(EncodingCodes.LIST8);
+        buffer.writeByte((byte) 5);  // Size
+        buffer.writeByte((byte) 4);  // Count
+        buffer.writeByte(EncodingCodes.NULL);  // Remote Channel
+        buffer.writeByte(EncodingCodes.UINT0);  // next outgoing id
+        buffer.writeByte(EncodingCodes.NULL);  // Incoming window
+        buffer.writeByte(EncodingCodes.UINT0);  // Outgoing window
+
+        if (fromStream) {
+            InputStream stream = new ProtonBufferInputStream(buffer);
+            try {
+                streamDecoder.readObject(stream, streamDecoderState);
+                fail("Should not decode type with invalid encoding");
+            } catch (DecodeException ex) {}
+        } else {
+            try {
+                decoder.readObject(buffer, decoderState);
+                fail("Should not decode type with invalid encoding");
+            } catch (DecodeException ex) {}
+        }
+    }
+
+    @Test
+    public void testEncodeDecodeFailsOnMissingOutgoingWindow() throws IOException {
+        testEncodeDecodeFailsOnMissingOutgoingWindow(false);
+    }
+
+    @Test
+    public void testEncodeDecodeFailsOnMissingOutgoingWindowFromStream() throws IOException {
+        testEncodeDecodeFailsOnMissingOutgoingWindow(true);
+    }
+
+    private void testEncodeDecodeFailsOnMissingOutgoingWindow(boolean fromStream) throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        buffer.writeByte((byte) 0); // Described Type Indicator
+        buffer.writeByte(EncodingCodes.SMALLULONG);
+        buffer.writeByte(Begin.DESCRIPTOR_CODE.byteValue());
+        buffer.writeByte(EncodingCodes.LIST8);
+        buffer.writeByte((byte) 5);  // Size
+        buffer.writeByte((byte) 4);  // Count
+        buffer.writeByte(EncodingCodes.NULL);  // Remote Channel
+        buffer.writeByte(EncodingCodes.UINT0);  // next outgoing id
+        buffer.writeByte(EncodingCodes.NULL);  // Incoming window
+        buffer.writeByte(EncodingCodes.UINT0);  // Outgoing window
 
         if (fromStream) {
             InputStream stream = new ProtonBufferInputStream(buffer);

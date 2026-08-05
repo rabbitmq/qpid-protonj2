@@ -21,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -426,8 +427,8 @@ public class BinaryTypeCodecTest extends CodecTestSupport {
 
         try {
             typeDecoder.skipValue(stream, streamDecoderState);
-        } catch (IllegalArgumentException ex) {
-            fail("Should be able to skip binary with length greater than readable bytes");
+            fail("Should not be able to skip binary with length greater than readable bytes");
+        } catch (DecodeException ex) {
         }
     }
 
@@ -563,5 +564,67 @@ public class BinaryTypeCodecTest extends CodecTestSupport {
             typeDecoder.skipValue(stream, streamDecoderState);
             fail("Expected an exception on skip of encoded list failure.");
         } catch (DecodeException dex) {}
+    }
+
+    @Test
+    public void testStreamDecodeFailsWhenEncodedLengthExceedsConfigurationSym8() throws IOException {
+        doTestStreamDecodeFailsWhenEncodedLengthExceedsConfiguration(true);
+    }
+
+    @Test
+    public void testStreamDecodeFailsWhenEncodedLengthExceedsConfigurationSym32() throws IOException {
+        doTestStreamDecodeFailsWhenEncodedLengthExceedsConfiguration(false);
+    }
+
+    private void doTestStreamDecodeFailsWhenEncodedLengthExceedsConfiguration(boolean smallEncoding) throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        final byte[] payload = new byte[256];
+
+        streamDecoderState.setMaxBinarySize(24);
+
+        if (smallEncoding) {
+            buffer.writeByte(EncodingCodes.VBIN8);
+            buffer.writeByte((byte) 127);
+        } else {
+            buffer.writeByte(EncodingCodes.VBIN32);
+            buffer.writeInt(127);
+        }
+        buffer.writeBytes(payload);
+
+        InputStream stream = new ProtonBufferInputStream(buffer);
+        StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
+        assertThrows(DecodeException.class, () -> typeDecoder.readValue(stream, streamDecoderState));
+    }
+
+    @Test
+    public void testStreamSkipValueFailsWhenEncodedLengthExceedsConfigurationSym8() throws IOException {
+        doTestStreamSkipValueFailsWhenEncodedLengthExceedsConfiguration(true);
+    }
+
+    @Test
+    public void testStreamSkipValueFailsWhenEncodedLengthExceedsConfigurationSym32() throws IOException {
+        doTestStreamSkipValueFailsWhenEncodedLengthExceedsConfiguration(false);
+    }
+
+    private void doTestStreamSkipValueFailsWhenEncodedLengthExceedsConfiguration(boolean smallEncoding) throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        final byte[] payload = new byte[256];
+
+        streamDecoderState.setMaxBinarySize(24);
+
+        if (smallEncoding) {
+            buffer.writeByte(EncodingCodes.VBIN8);
+            buffer.writeByte((byte) 127);
+        } else {
+            buffer.writeByte(EncodingCodes.VBIN32);
+            buffer.writeInt(127);
+        }
+        buffer.writeBytes(payload);
+
+        InputStream stream = new ProtonBufferInputStream(buffer);
+        StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
+        assertThrows(DecodeException.class, () -> typeDecoder.skipValue(stream, streamDecoderState));
     }
 }

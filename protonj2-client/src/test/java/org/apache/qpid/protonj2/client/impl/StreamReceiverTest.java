@@ -44,13 +44,17 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.qpid.protonj2.buffer.ProtonBuffer;
+import org.apache.qpid.protonj2.buffer.ProtonBufferAllocator;
 import org.apache.qpid.protonj2.client.Client;
 import org.apache.qpid.protonj2.client.Connection;
 import org.apache.qpid.protonj2.client.ConnectionOptions;
 import org.apache.qpid.protonj2.client.DeliveryState;
 import org.apache.qpid.protonj2.client.ErrorCondition;
+import org.apache.qpid.protonj2.client.Message;
 import org.apache.qpid.protonj2.client.ReceiverOptions;
 import org.apache.qpid.protonj2.client.SenderOptions;
+import org.apache.qpid.protonj2.client.StreamDecodeOptions;
 import org.apache.qpid.protonj2.client.StreamDelivery;
 import org.apache.qpid.protonj2.client.StreamReceiver;
 import org.apache.qpid.protonj2.client.StreamReceiverMessage;
@@ -63,12 +67,15 @@ import org.apache.qpid.protonj2.client.exceptions.ClientOperationTimedOutExcepti
 import org.apache.qpid.protonj2.client.exceptions.ClientUnsupportedOperationException;
 import org.apache.qpid.protonj2.client.test.ImperativeClientTestCase;
 import org.apache.qpid.protonj2.client.test.Wait;
+import org.apache.qpid.protonj2.codec.CodecFactory;
+import org.apache.qpid.protonj2.codec.Encoder;
 import org.apache.qpid.protonj2.codec.EncodingCodes;
 import org.apache.qpid.protonj2.test.driver.ProtonTestServer;
 import org.apache.qpid.protonj2.test.driver.codec.messaging.Accepted;
 import org.apache.qpid.protonj2.test.driver.codec.messaging.DeliveryAnnotations;
 import org.apache.qpid.protonj2.types.Binary;
 import org.apache.qpid.protonj2.types.Symbol;
+import org.apache.qpid.protonj2.types.UnsignedByte;
 import org.apache.qpid.protonj2.types.UnsignedInteger;
 import org.apache.qpid.protonj2.types.messaging.AmqpSequence;
 import org.apache.qpid.protonj2.types.messaging.AmqpValue;
@@ -4044,5 +4051,256 @@ class StreamReceiverTest extends ImperativeClientTestCase {
         buffer[3] = EncodingCodes.LIST32; // Should be map based
 
         return buffer;
+    }
+
+    @Test
+    public void testReceiveMessageThatExceedsDepthLimit() throws Exception {
+        final byte[] payload = createNestedEncodedMessage(20);
+
+        try (ProtonTestServer peer = new ProtonTestServer()) {
+            peer.expectSASLAnonymousConnect();
+            peer.expectOpen().respond();
+            peer.expectBegin().respond();
+            peer.expectAttach().withRole(Role.RECEIVER.getValue()).respond();
+            peer.expectFlow();
+            peer.remoteTransfer().withHandle(0)
+                .withDeliveryId(0)
+                .withDeliveryTag(new byte[] { 1 })
+                .withMore(false)
+                .withMessageFormat(0)
+                .withPayload(payload).queue();
+
+            peer.start();
+
+            URI remoteURI = peer.getServerURI();
+
+            LOG.info("Test started, peer listening on: {}", remoteURI);
+
+            Client container = Client.create();
+            Connection connection = container.connect(remoteURI.getHost(), remoteURI.getPort());
+            StreamReceiver receiver = connection.openStreamReceiver("test-queue", new StreamReceiverOptions().autoAccept(false));
+            StreamDelivery delivery = receiver.receive();
+
+            peer.expectDisposition().withSettled(true).withState().accepted();
+            peer.expectDetach().respond();
+            peer.expectEnd().respond();
+            peer.expectClose().respond();
+
+            assertNotNull(delivery);
+            Message<?> received = delivery.message(StreamDecodeOptions.defaultOptions().depthLimit(20));
+            assertTrue(received.hasAnnotation("A"));
+
+            delivery.accept();
+            receiver.closeAsync().get();
+            connection.closeAsync().get();
+
+            peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+        }
+    }
+
+    @Test
+    public void testCannotReceiveMessageThatExceedsDepthLimit() throws Exception {
+        final byte[] payload = createNestedEncodedMessage(10);
+
+        try (ProtonTestServer peer = new ProtonTestServer()) {
+            peer.expectSASLAnonymousConnect();
+            peer.expectOpen().respond();
+            peer.expectBegin().respond();
+            peer.expectAttach().withRole(Role.RECEIVER.getValue()).respond();
+            peer.expectFlow();
+            peer.remoteTransfer().withHandle(0)
+                                 .withDeliveryId(0)
+                                 .withDeliveryTag(new byte[] { 1 })
+                                 .withMore(false)
+                                 .withMessageFormat(0)
+                                 .withPayload(payload).queue();
+            peer.start();
+
+            URI remoteURI = peer.getServerURI();
+
+            LOG.info("Test started, peer listening on: {}", remoteURI);
+
+            Client container = Client.create();
+            Connection connection = container.connect(remoteURI.getHost(), remoteURI.getPort());
+            StreamReceiver receiver = connection.openStreamReceiver("test-queue", new StreamReceiverOptions().autoAccept(false));
+            StreamDelivery delivery = receiver.receive();
+
+            receiver.openFuture().get();
+
+            peer.expectDisposition().withSettled(true).withState().rejected();
+            peer.expectDetach().respond();
+            peer.expectEnd().respond();
+            peer.expectClose().respond();
+
+            assertNotNull(delivery);
+
+            try {
+                delivery.message(StreamDecodeOptions.defaultOptions().depthLimit(5)).hasAnnotations();
+                fail("Should have thrown due to large nesting of elements");
+            } catch (ClientException e) {
+                delivery.reject("amqp:error", e.getMessage());
+            }
+
+            receiver.closeAsync().get();
+            connection.closeAsync().get();
+
+            peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+        }
+    }
+
+    @Test
+    public void testReceiveMessageWithZeroWidthArrays() throws Exception {
+        final byte[] payload = createEncodedMessageWithZeroWidthArray(10);
+
+        try (ProtonTestServer peer = new ProtonTestServer()) {
+            peer.expectSASLAnonymousConnect();
+            peer.expectOpen().respond();
+            peer.expectBegin().respond();
+            peer.expectAttach().withRole(Role.RECEIVER.getValue()).respond();
+            peer.expectFlow();
+            peer.remoteTransfer().withHandle(0)
+                .withDeliveryId(0)
+                .withDeliveryTag(new byte[] { 1 })
+                .withMore(false)
+                .withMessageFormat(0)
+                .withPayload(payload).queue();
+            peer.start();
+
+            URI remoteURI = peer.getServerURI();
+
+            LOG.info("Test started, peer listening on: {}", remoteURI);
+
+            Client container = Client.create();
+            Connection connection = container.connect(remoteURI.getHost(), remoteURI.getPort());
+            StreamReceiver receiver = connection.openStreamReceiver("test-queue", new StreamReceiverOptions().autoAccept(false));
+            StreamDelivery delivery = receiver.receive();
+
+            peer.expectDisposition().withSettled(true).withState().accepted();
+            peer.expectDetach().respond();
+            peer.expectEnd().respond();
+            peer.expectClose().respond();
+
+            assertNotNull(delivery);
+            Message<?> received = delivery.message(StreamDecodeOptions.defaultOptions().maxZeroWidthArrayElements(10));
+            assertTrue(received.hasAnnotation("A"));
+
+            delivery.accept();
+            receiver.closeAsync().get();
+            connection.closeAsync().get();
+
+            peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+        }
+    }
+
+    @Test
+    public void testCannotReceiveMessageWithZeroWidthArray() throws Exception {
+        final byte[] payload = createEncodedMessageWithZeroWidthArray(10);
+
+        try (ProtonTestServer peer = new ProtonTestServer()) {
+            peer.expectSASLAnonymousConnect();
+            peer.expectOpen().respond();
+            peer.expectBegin().respond();
+            peer.expectAttach().withRole(Role.RECEIVER.getValue()).respond();
+            peer.expectFlow();
+            peer.remoteTransfer().withHandle(0)
+                .withDeliveryId(0)
+                .withDeliveryTag(new byte[] { 1 })
+                .withMore(false)
+                .withMessageFormat(0)
+                .withPayload(payload).queue();
+            peer.start();
+
+            URI remoteURI = peer.getServerURI();
+
+            LOG.info("Test started, peer listening on: {}", remoteURI);
+
+            Client container = Client.create();
+            Connection connection = container.connect(remoteURI.getHost(), remoteURI.getPort());
+            StreamReceiver receiver = connection.openStreamReceiver("test-queue", new StreamReceiverOptions().autoAccept(false));
+            StreamDelivery delivery = receiver.receive();
+
+            peer.expectDisposition().withSettled(true).withState().rejected();
+            peer.expectDetach().respond();
+            peer.expectEnd().respond();
+            peer.expectClose().respond();
+
+            assertNotNull(delivery);
+
+            try {
+                // Defaults won't allow a decode of zero width arrays
+                delivery.message(StreamDecodeOptions.defaultOptions()).annotations();
+                fail("Should have thrown due to large nesting of elements");
+            } catch (ClientException e) {
+                delivery.reject("amqp:error", e.getMessage());
+            }
+
+            receiver.closeAsync().get();
+            connection.closeAsync().get();
+
+            peer.waitForScriptToComplete(5, TimeUnit.SECONDS);
+        }
+    }
+
+    @Override
+    protected byte[] createEncodedMessageWithZeroWidthArray(int length) {
+        if (length > UnsignedByte.MAX_VALUE.intValue()) {
+            throw new IllegalArgumentException("Length must be within the range of an unsigned byte");
+        }
+
+        final ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        buffer.writeByte((byte) 0); // Described Type Indicator
+        buffer.writeByte(EncodingCodes.SMALLULONG);
+        buffer.writeByte(MessageAnnotations.DESCRIPTOR_CODE.byteValue());
+        buffer.writeByte(EncodingCodes.MAP8);
+        buffer.writeByte((byte) 8);
+        buffer.writeByte((byte) 2);
+        buffer.writeByte(EncodingCodes.SYM8);
+        buffer.writeByte((byte) 1);
+        buffer.writeByte((byte) 65);
+        buffer.writeByte(EncodingCodes.ARRAY8);
+        buffer.writeByte((byte) 2);
+        buffer.writeByte((byte) length);
+        buffer.writeByte(EncodingCodes.BOOLEAN_TRUE);
+
+        final byte[] result = new byte[buffer.getReadableBytes()];
+
+        buffer.copyInto(buffer.getReadOffset(), result, 0, result.length);
+
+        return result;
+    }
+
+    @Override
+    protected byte[] createNestedEncodedMessage(int depth) {
+        if (depth == 0 || depth > Byte.MAX_VALUE) {
+            throw new IllegalArgumentException("Depth should be within the range 1 -> 127");
+        }
+
+        final Encoder encoder = CodecFactory.getEncoder();
+        final ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        final List<List<?>> lists = new ArrayList<>();
+
+        List<List<?>> current = lists;
+
+        for (int i = 0; i < depth - 2; ++i) { // One top level Map, and a top level list
+            final List<List<?>> next = new ArrayList<>();
+
+            current.add(next);
+            current = next;
+        }
+
+        final Map<Symbol, List<?>> map = new HashMap<>();
+        map.put(Symbol.getSymbol("A"), lists);
+
+        final MessageAnnotations annotations = new MessageAnnotations(map);
+
+        encoder.writeObject(buffer, encoder.getCachedEncoderState(), annotations);
+
+        final byte[] result = new byte[buffer.getReadableBytes()];
+
+        buffer.copyInto(buffer.getReadOffset(), result, 0, result.length);
+
+        return result;
     }
 }

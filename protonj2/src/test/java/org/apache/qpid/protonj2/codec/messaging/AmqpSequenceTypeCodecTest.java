@@ -19,6 +19,7 @@ package org.apache.qpid.protonj2.codec.messaging;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -355,6 +356,72 @@ public class AmqpSequenceTypeCodecTest extends CodecTestSupport {
             assertNotNull(resultArray[i]);
             assertTrue(resultArray[i] instanceof AmqpSequence);
             assertEquals(array[i].getValue(), resultArray[i].getValue());
+        }
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfTypeWithList0EncodingsArray8() throws IOException {
+        doTestDecodeFailsWhenArrayOfTypeWithList0Encodings(EncodingCodes.ARRAY8, false);
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfTypeWithList0EncodingsArray32() throws IOException {
+        doTestDecodeFailsWhenArrayOfTypeWithList0Encodings(EncodingCodes.ARRAY32, false);
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfTypeWithList0EncodingsArray8FS() throws IOException {
+        doTestDecodeFailsWhenArrayOfTypeWithList0Encodings(EncodingCodes.ARRAY8, true);
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfTypeWithList0EncodingsArray32FS() throws IOException {
+        doTestDecodeFailsWhenArrayOfTypeWithList0Encodings(EncodingCodes.ARRAY32, true);
+    }
+
+    private void doTestDecodeFailsWhenArrayOfTypeWithList0Encodings(byte arrayType, boolean fromStream) throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        // First show that we can do this if the data is correct
+        if (arrayType == EncodingCodes.ARRAY32) {
+            buffer.writeByte(EncodingCodes.ARRAY32);
+            buffer.writeInt(8);  // Size
+            buffer.writeInt(2);  // Count
+        } else {
+            buffer.writeByte(EncodingCodes.ARRAY8);
+            buffer.writeByte((byte) 5);  // Size
+            buffer.writeByte((byte) 2);  // Count
+        }
+        buffer.writeByte((byte) 0); // Described Type Indicator
+        buffer.writeByte(EncodingCodes.SMALLULONG);
+        buffer.writeByte(AmqpSequence.DESCRIPTOR_CODE.byteValue());
+        buffer.writeByte(EncodingCodes.LIST0);
+
+        if (fromStream) {
+            InputStream stream = new ProtonBufferInputStream(buffer.copy(true));
+            StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
+            assertEquals(Object.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.readValue(stream, streamDecoderState));
+        } else {
+            TypeDecoder<?> typeDecoder = decoder.readNextTypeDecoder(buffer, decoderState);
+            assertEquals(Object.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.readValue(buffer, decoderState));
+        }
+
+        buffer.setReadOffset(0);  // Reset and try with limits lifted
+
+        decoderState.setMaxZeroWidthArrayElements(2);
+        streamDecoderState.setMaxZeroWidthArrayElements(2);
+
+        if (fromStream) {
+            InputStream stream = new ProtonBufferInputStream(buffer.copy(true));
+            StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
+            assertEquals(Object.class, typeDecoder.getTypeClass());
+            assertTrue(typeDecoder.readValue(stream, streamDecoderState) instanceof AmqpSequence[]);
+        } else {
+            TypeDecoder<?> typeDecoder = decoder.readNextTypeDecoder(buffer, decoderState);
+            assertEquals(Object.class, typeDecoder.getTypeClass());
+            assertTrue(typeDecoder.readValue(buffer, decoderState) instanceof AmqpSequence[]);
         }
     }
 }

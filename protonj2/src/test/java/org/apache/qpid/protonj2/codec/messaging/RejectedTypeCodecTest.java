@@ -143,7 +143,7 @@ public class RejectedTypeCodecTest extends CodecTestSupport {
         buffer.writeByte(EncodingCodes.SMALLULONG);
         buffer.writeByte(Rejected.DESCRIPTOR_CODE.byteValue());
         buffer.writeByte(EncodingCodes.LIST8);
-        buffer.writeByte((byte) 0);  // Size
+        buffer.writeByte((byte) 1);  // Size
         buffer.writeByte((byte) 0);  // Count
 
         final Object result;
@@ -175,7 +175,7 @@ public class RejectedTypeCodecTest extends CodecTestSupport {
         buffer.writeByte(EncodingCodes.SMALLULONG);
         buffer.writeByte(Rejected.DESCRIPTOR_CODE.byteValue());
         buffer.writeByte(EncodingCodes.LIST32);
-        buffer.writeInt((byte) 0);  // Size
+        buffer.writeInt((byte) 4);  // Size
         buffer.writeInt((byte) 0);  // Count
 
         final Object result;

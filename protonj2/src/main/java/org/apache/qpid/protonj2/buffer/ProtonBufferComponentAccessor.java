@@ -58,6 +58,33 @@ import java.util.NoSuchElementException;
 public interface ProtonBufferComponentAccessor extends AutoCloseable {
 
     /**
+     * Returns the number of constituent buffer components that are contained in this buffer instance
+     * which for a non-composite buffer will always be one (namely itself).  For a composite buffer this
+     * count is the total count of all buffers mapped to the composite.
+     *
+     * @return the number of buffers managed by this {@link ProtonBuffer} instance.
+     */
+    int componentCount();
+
+    /**
+     * Returns the number of readable constituent buffer components that are contained in this buffer
+     * instance which for a non-composite buffer will always be zero or one (namely itself). For a composite
+     * buffer this count is the total count of all buffers mapped to the composite which are readable.
+     *
+     * @return the number of readable buffers managed by this {@link ProtonBuffer} instance.
+     */
+    int readableComponentCount();
+
+    /**
+     * Returns the number of writable constituent buffer components that are contained in this buffer
+     * instance which for a non-composite buffer will always be zero or one (namely itself). For a composite
+     * buffer this count is the total count of all buffers mapped to the composite which are writable.
+     *
+     * @return the number of writable buffer components managed by this {@link ProtonBuffer} instance.
+     */
+    int writableComponentCount();
+
+    /**
      * Safe to call close in all cases the close will not throw.
      */
     @Override
@@ -169,19 +196,23 @@ public interface ProtonBufferComponentAccessor extends AutoCloseable {
     default Iterator<ProtonBufferComponent> componentIterator() {
         return new Iterator<ProtonBufferComponent>() {
 
+            private int remaining = componentCount();
             private boolean initialized;
-            private ProtonBufferComponent next;
 
             @Override
             public boolean hasNext() {
-                return next != null;
+                return remaining > 0;
             }
 
             @Override
             public ProtonBufferComponent next() {
-                if (next == null && initialized) {
+                if (remaining == 0) {
                     throw new NoSuchElementException();
                 }
+
+                remaining = Math.max(0, remaining - 1);
+
+                final ProtonBufferComponent next;
 
                 if (!initialized) {
                     next = ProtonBufferComponentAccessor.this.first();
@@ -205,19 +236,23 @@ public interface ProtonBufferComponentAccessor extends AutoCloseable {
     default Iterator<ProtonBufferComponent> readableComponentIterator() {
         return new Iterator<ProtonBufferComponent>() {
 
+            private int remaining = readableComponentCount();
             private boolean initialized;
-            private ProtonBufferComponent next;
 
             @Override
             public boolean hasNext() {
-                return next != null;
+                return remaining > 0;
             }
 
             @Override
             public ProtonBufferComponent next() {
-                if (next == null && initialized) {
+                if (remaining == 0) {
                     throw new NoSuchElementException();
                 }
+
+                remaining = Math.max(0, remaining - 1);
+
+                final ProtonBufferComponent next;
 
                 if (!initialized) {
                     next = ProtonBufferComponentAccessor.this.firstReadable();
@@ -241,19 +276,23 @@ public interface ProtonBufferComponentAccessor extends AutoCloseable {
     default Iterator<ProtonBufferComponent> writableComponentIterator() {
         return new Iterator<ProtonBufferComponent>() {
 
+            private int remaining = writableComponentCount();
             private boolean initialized;
-            private ProtonBufferComponent next;
 
             @Override
             public boolean hasNext() {
-                return next != null;
+                return remaining > 0;
             }
 
             @Override
             public ProtonBufferComponent next() {
-                if (next == null && initialized) {
+                if (remaining == 0) {
                     throw new NoSuchElementException();
                 }
+
+                remaining = Math.max(0, remaining - 1);
+
+                final ProtonBufferComponent next;
 
                 if (!initialized) {
                     next = ProtonBufferComponentAccessor.this.firstWritable();

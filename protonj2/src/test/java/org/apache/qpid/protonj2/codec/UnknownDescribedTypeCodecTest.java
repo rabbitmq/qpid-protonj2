@@ -18,6 +18,7 @@ package org.apache.qpid.protonj2.codec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -33,6 +34,7 @@ import org.apache.qpid.protonj2.buffer.ProtonBufferAllocator;
 import org.apache.qpid.protonj2.buffer.ProtonBufferInputStream;
 import org.apache.qpid.protonj2.codec.util.NoLocalType;
 import org.apache.qpid.protonj2.types.UnknownDescribedType;
+import org.apache.qpid.protonj2.types.UnsignedLong;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -216,6 +218,436 @@ public class UnknownDescribedTypeCodecTest extends CodecTestSupport {
 
             UnknownDescribedType resultTye = (UnknownDescribedType) result;
             assertEquals(NoLocalType.NO_LOCAL.getDescriptor(), resultTye.getDescriptor());
+        }
+    }
+
+    @Test
+    public void testDecodingOfDeeplyNestedUnknownDescribedTypesFromBuffer() throws Exception {
+        doTestDecodingOfDeeplyNestedUnknownDescribedTypes(false, 10);
+    }
+
+    @Test
+    public void testDecodingOfDeeplyNestedUnknownDescribedTypesFromStream() throws Exception {
+        doTestDecodingOfDeeplyNestedUnknownDescribedTypes(true, 10);
+    }
+
+    private void doTestDecodingOfDeeplyNestedUnknownDescribedTypes(boolean fromStream, int depthLimit) throws IOException {
+        final UnknownDescribedType toEncode = createNode(depthLimit + 1, 0);
+        final ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        encoder.writeObject(buffer, encoderState, toEncode);
+
+        streamDecoderState.setDepthLimit(depthLimit);
+        decoderState.setDepthLimit(depthLimit);
+
+        if (fromStream) {
+            InputStream stream = new ProtonBufferInputStream(buffer.copy(true));
+            assertThrows(DecodeException.class, () -> streamDecoder.readObject(stream, streamDecoderState));
+        } else {
+            assertThrows(DecodeException.class, () -> decoder.readObject(buffer.copy(true), decoderState));
+        }
+
+        // Encode up to the limit instead which should work
+        streamDecoderState.reset();
+        decoderState.reset();
+
+        streamDecoderState.setDepthLimit(depthLimit + 1);
+        decoderState.setDepthLimit(depthLimit + 1);
+
+        if (fromStream) {
+            InputStream stream = new ProtonBufferInputStream(buffer.copy(true));
+            assertTrue(streamDecoder.readObject(stream, streamDecoderState) instanceof UnknownDescribedType);
+        } else {
+            assertTrue(decoder.readObject(buffer.copy(true), decoderState) instanceof UnknownDescribedType);
+        }
+    }
+
+    private UnknownDescribedType createNode(int limit, int depth) {
+        final UnsignedLong DESCRIPTOR_CODE = UnsignedLong.valueOf(0xAA00468C00000003L);
+
+        if (++depth > limit) {
+            return new UnknownDescribedType(DESCRIPTOR_CODE, null);
+        } else {
+            return new UnknownDescribedType(DESCRIPTOR_CODE, List.of(createNode(limit, depth)));
+        }
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfValuesSizeIsToLargeArray8() throws IOException {
+        doTestDecodeFailsWhenArrayOfValuesSizeIsToLarge(EncodingCodes.ARRAY8, false);
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfValuesSizeIsToLargeArray32() throws IOException {
+        doTestDecodeFailsWhenArrayOfValuesSizeIsToLarge(EncodingCodes.ARRAY32, false);
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfValuesSizeIsToLargeArray8FS() throws IOException {
+        doTestDecodeFailsWhenArrayOfValuesSizeIsToLarge(EncodingCodes.ARRAY8, true);
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfValuesSizeIsToLargeArray32FS() throws IOException {
+        doTestDecodeFailsWhenArrayOfValuesSizeIsToLarge(EncodingCodes.ARRAY32, true);
+    }
+
+    private void doTestDecodeFailsWhenArrayOfValuesSizeIsToLarge(byte arrayType, boolean fromStream) throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        // First show that we can do this if the data is correct
+        if (arrayType == EncodingCodes.ARRAY32) {
+            buffer.writeByte(EncodingCodes.ARRAY32);
+            buffer.writeInt(12);  // Size
+            buffer.writeInt(2);  // Count
+        } else {
+            buffer.writeByte(EncodingCodes.ARRAY8);
+            buffer.writeByte((byte) 9);  // Size
+            buffer.writeByte((byte) 2);  // Count
+        }
+        buffer.writeByte((byte) 0); // Described Type Indicator
+        buffer.writeByte(EncodingCodes.SMALLULONG);
+        buffer.writeByte(NoLocalType.DESCRIPTOR_CODE.byteValue());
+        buffer.writeByte(EncodingCodes.LIST8);
+        buffer.writeByte((byte) 1);  // Size
+        buffer.writeByte((byte) 0);  // Count
+        buffer.writeByte((byte) 1);  // Size
+        buffer.writeByte((byte) 0);  // Count
+
+        if (fromStream) {
+            InputStream stream = new ProtonBufferInputStream(buffer);
+            StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
+            assertEquals(Object.class, typeDecoder.getTypeClass());
+            assertTrue(typeDecoder.readValue(stream, streamDecoderState) instanceof UnknownDescribedType[]);
+        } else {
+            TypeDecoder<?> typeDecoder = decoder.readNextTypeDecoder(buffer, decoderState);
+            assertEquals(Object.class, typeDecoder.getTypeClass());
+            assertTrue(typeDecoder.readValue(buffer, decoderState) instanceof UnknownDescribedType[]);
+        }
+
+        // Now check that if we set the array size to big it will not decode
+        ProtonBuffer buffer2 = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        if (arrayType == EncodingCodes.ARRAY32) {
+            buffer2.writeByte(EncodingCodes.ARRAY32);
+            buffer2.writeInt(13);  // Size
+            buffer2.writeInt(2);   // Count
+        } else {
+            buffer2.writeByte(EncodingCodes.ARRAY8);
+            buffer2.writeByte((byte) 10);  // Size
+            buffer2.writeByte((byte) 2);  // Count
+        }
+        buffer2.writeByte((byte) 0); // Described Type Indicator
+        buffer2.writeByte(EncodingCodes.SMALLULONG);
+        buffer2.writeByte(NoLocalType.DESCRIPTOR_CODE.byteValue());
+        buffer2.writeByte(EncodingCodes.LIST8);
+        buffer2.writeByte((byte) 1);  // Size
+        buffer2.writeByte((byte) 0);  // Count
+        buffer2.writeByte((byte) 1);  // Size
+        buffer2.writeByte((byte) 0);  // Count
+
+        if (fromStream) {
+            streamDecoderState.setMaxArraySize(1);
+            InputStream stream = new ProtonBufferInputStream(buffer2);
+            StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
+            assertEquals(Object.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.readValue(stream, streamDecoderState));
+        } else {
+            TypeDecoder<?> typeDecoder = decoder.readNextTypeDecoder(buffer2, decoderState);
+            assertEquals(Object.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.readValue(buffer2, decoderState));
+        }
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfTypeWithList0EncodingsArray8() throws IOException {
+        doTestDecodeFailsWhenArrayOfTypeWithList0Encodings(EncodingCodes.ARRAY8, false);
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfTypeWithList0EncodingsArray32() throws IOException {
+        doTestDecodeFailsWhenArrayOfTypeWithList0Encodings(EncodingCodes.ARRAY32, false);
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfTypeWithList0EncodingsArray8FS() throws IOException {
+        doTestDecodeFailsWhenArrayOfTypeWithList0Encodings(EncodingCodes.ARRAY8, true);
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfTypeWithList0EncodingsArray32FS() throws IOException {
+        doTestDecodeFailsWhenArrayOfTypeWithList0Encodings(EncodingCodes.ARRAY32, true);
+    }
+
+    private void doTestDecodeFailsWhenArrayOfTypeWithList0Encodings(byte arrayType, boolean fromStream) throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        // First show that we can do this if the data is correct
+        if (arrayType == EncodingCodes.ARRAY32) {
+            buffer.writeByte(EncodingCodes.ARRAY32);
+            buffer.writeInt(8);  // Size
+            buffer.writeInt(2);  // Count
+        } else {
+            buffer.writeByte(EncodingCodes.ARRAY8);
+            buffer.writeByte((byte) 5);  // Size
+            buffer.writeByte((byte) 2);  // Count
+        }
+        buffer.writeByte((byte) 0); // Described Type Indicator
+        buffer.writeByte(EncodingCodes.SMALLULONG);
+        buffer.writeByte(NoLocalType.DESCRIPTOR_CODE.byteValue());
+        buffer.writeByte(EncodingCodes.LIST0);
+
+        if (fromStream) {
+            InputStream stream = new ProtonBufferInputStream(buffer.copy(true));
+            StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
+            assertEquals(Object.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.readValue(stream, streamDecoderState));
+        } else {
+            TypeDecoder<?> typeDecoder = decoder.readNextTypeDecoder(buffer, decoderState);
+            assertEquals(Object.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.readValue(buffer, decoderState));
+        }
+
+        buffer.setReadOffset(0);  // Reset and try with limits lifted
+
+        decoderState.setMaxZeroWidthArrayElements(2);
+        streamDecoderState.setMaxZeroWidthArrayElements(2);
+
+        if (fromStream) {
+            InputStream stream = new ProtonBufferInputStream(buffer.copy(true));
+            StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
+            assertEquals(Object.class, typeDecoder.getTypeClass());
+            assertTrue(typeDecoder.readValue(stream, streamDecoderState) instanceof UnknownDescribedType[]);
+        } else {
+            TypeDecoder<?> typeDecoder = decoder.readNextTypeDecoder(buffer, decoderState);
+            assertEquals(Object.class, typeDecoder.getTypeClass());
+            assertTrue(typeDecoder.readValue(buffer, decoderState) instanceof UnknownDescribedType[]);
+        }
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfTypeWithListEncodingsHasOverLargeCountArray8() throws IOException {
+        doTestDecodeFailsWhenArrayOfTypeWithListEncodingsHasOverLargeCount(EncodingCodes.ARRAY8, false);
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfTypeWithListEncodingsHasOverLargeCountArray32() throws IOException {
+        doTestDecodeFailsWhenArrayOfTypeWithListEncodingsHasOverLargeCount(EncodingCodes.ARRAY32, false);
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfTypeWithListEncodingsHasOverLargeCountArray8FS() throws IOException {
+        doTestDecodeFailsWhenArrayOfTypeWithListEncodingsHasOverLargeCount(EncodingCodes.ARRAY8, true);
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfTypeWithListEncodingsHasOverLargeCountArray32FS() throws IOException {
+        doTestDecodeFailsWhenArrayOfTypeWithListEncodingsHasOverLargeCount(EncodingCodes.ARRAY32, true);
+    }
+
+    private void doTestDecodeFailsWhenArrayOfTypeWithListEncodingsHasOverLargeCount(byte arrayType, boolean fromStream) throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        streamDecoderState.setMaxArraySize(16);
+
+        // First show that we can do this if the data is correct
+        if (arrayType == EncodingCodes.ARRAY32) {
+            buffer.writeByte(EncodingCodes.ARRAY32);
+            buffer.writeInt(10);  // Size
+            buffer.writeInt(17);  // Count
+        } else {
+            buffer.writeByte(EncodingCodes.ARRAY8);
+            buffer.writeByte((byte) 7);  // Size
+            buffer.writeByte((byte) 17);  // Count
+        }
+        buffer.writeByte((byte) 0); // Described Type Indicator
+        buffer.writeByte(EncodingCodes.SMALLULONG);
+        buffer.writeByte(NoLocalType.DESCRIPTOR_CODE.byteValue());
+        buffer.writeByte(EncodingCodes.LIST8);
+        buffer.writeByte((byte) 1);
+        buffer.writeByte((byte) 0);
+
+        if (fromStream) {
+            InputStream stream = new ProtonBufferInputStream(buffer.copy(true));
+            StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
+            assertEquals(Object.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.readValue(stream, streamDecoderState));
+        } else {
+            TypeDecoder<?> typeDecoder = decoder.readNextTypeDecoder(buffer, decoderState);
+            assertEquals(Object.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.readValue(buffer, decoderState));
+        }
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfTypeWithULong0EncodingsArray8() throws IOException {
+        doTestDecodeFailsWhenArrayOfTypeWithUZeroSizedEncodings(EncodingCodes.ARRAY8, false, EncodingCodes.ULONG0);
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfTypeWithULong0EncodingsArray32() throws IOException {
+        doTestDecodeFailsWhenArrayOfTypeWithUZeroSizedEncodings(EncodingCodes.ARRAY32, false, EncodingCodes.ULONG0);
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfTypeWithULong0EncodingsArray8FS() throws IOException {
+        doTestDecodeFailsWhenArrayOfTypeWithUZeroSizedEncodings(EncodingCodes.ARRAY8, true, EncodingCodes.ULONG0);
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfTypeWithULong0EncodingsArray32FS() throws IOException {
+        doTestDecodeFailsWhenArrayOfTypeWithUZeroSizedEncodings(EncodingCodes.ARRAY32, true, EncodingCodes.ULONG0);
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfTypeWithUInt0EncodingsArray8() throws IOException {
+        doTestDecodeFailsWhenArrayOfTypeWithUZeroSizedEncodings(EncodingCodes.ARRAY8, false, EncodingCodes.UINT0);
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfTypeWithUInt0EncodingsArray32() throws IOException {
+        doTestDecodeFailsWhenArrayOfTypeWithUZeroSizedEncodings(EncodingCodes.ARRAY32, false, EncodingCodes.UINT0);
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfTypeWithUInt0EncodingsArray8FS() throws IOException {
+        doTestDecodeFailsWhenArrayOfTypeWithUZeroSizedEncodings(EncodingCodes.ARRAY8, true, EncodingCodes.UINT0);
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfTypeWithUInt0EncodingsArray32FS() throws IOException {
+        doTestDecodeFailsWhenArrayOfTypeWithUZeroSizedEncodings(EncodingCodes.ARRAY32, true, EncodingCodes.UINT0);
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfTypeWithNullEncodingsArray8() throws IOException {
+        doTestDecodeFailsWhenArrayOfTypeWithUZeroSizedEncodings(EncodingCodes.ARRAY8, false, EncodingCodes.NULL);
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfTypeWithNullEncodingsArray32() throws IOException {
+        doTestDecodeFailsWhenArrayOfTypeWithUZeroSizedEncodings(EncodingCodes.ARRAY32, false, EncodingCodes.NULL);
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfTypeWithNullEncodingsArray8FS() throws IOException {
+        doTestDecodeFailsWhenArrayOfTypeWithUZeroSizedEncodings(EncodingCodes.ARRAY8, true, EncodingCodes.NULL);
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfTypeWithNullEncodingsArray32FS() throws IOException {
+        doTestDecodeFailsWhenArrayOfTypeWithUZeroSizedEncodings(EncodingCodes.ARRAY32, true, EncodingCodes.NULL);
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfTypeWithTrueEncodingsArray8() throws IOException {
+        doTestDecodeFailsWhenArrayOfTypeWithUZeroSizedEncodings(EncodingCodes.ARRAY8, false, EncodingCodes.BOOLEAN_TRUE);
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfTypeWithTrueEncodingsArray32() throws IOException {
+        doTestDecodeFailsWhenArrayOfTypeWithUZeroSizedEncodings(EncodingCodes.ARRAY32, false, EncodingCodes.BOOLEAN_TRUE);
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfTypeWithTrueEncodingsArray8FS() throws IOException {
+        doTestDecodeFailsWhenArrayOfTypeWithUZeroSizedEncodings(EncodingCodes.ARRAY8, true, EncodingCodes.BOOLEAN_TRUE);
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfTypeWithTrueEncodingsArray32FS() throws IOException {
+        doTestDecodeFailsWhenArrayOfTypeWithUZeroSizedEncodings(EncodingCodes.ARRAY32, true, EncodingCodes.BOOLEAN_TRUE);
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfTypeWithFalseEncodingsArray8() throws IOException {
+        doTestDecodeFailsWhenArrayOfTypeWithUZeroSizedEncodings(EncodingCodes.ARRAY8, false, EncodingCodes.BOOLEAN_FALSE);
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfTypeWithFalseEncodingsArray32() throws IOException {
+        doTestDecodeFailsWhenArrayOfTypeWithUZeroSizedEncodings(EncodingCodes.ARRAY32, false, EncodingCodes.BOOLEAN_FALSE);
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfTypeWithFalseEncodingsArray8FS() throws IOException {
+        doTestDecodeFailsWhenArrayOfTypeWithUZeroSizedEncodings(EncodingCodes.ARRAY8, true, EncodingCodes.BOOLEAN_FALSE);
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfTypeWithFalseEncodingsArray32FS() throws IOException {
+        doTestDecodeFailsWhenArrayOfTypeWithUZeroSizedEncodings(EncodingCodes.ARRAY32, true, EncodingCodes.BOOLEAN_FALSE);
+    }
+
+    private void doTestDecodeFailsWhenArrayOfTypeWithUZeroSizedEncodings(byte arrayType, boolean fromStream, byte code) throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        // First show that we can do this if the data is correct
+        if (arrayType == EncodingCodes.ARRAY32) {
+            buffer.writeByte(EncodingCodes.ARRAY32);
+            buffer.writeInt(8);  // Size
+            buffer.writeInt(2);  // Count
+        } else {
+            buffer.writeByte(EncodingCodes.ARRAY8);
+            buffer.writeByte((byte) 5);  // Size
+            buffer.writeByte((byte) 2);  // Count
+        }
+        buffer.writeByte((byte) 0); // Described Type Indicator
+        buffer.writeByte(EncodingCodes.SMALLULONG);
+        buffer.writeByte(NoLocalType.DESCRIPTOR_CODE.byteValue());
+        buffer.writeByte(code);
+
+        if (fromStream) {
+            InputStream stream = new ProtonBufferInputStream(buffer.copy(true));
+            StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
+            assertEquals(Object.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.readValue(stream, streamDecoderState));
+        } else {
+            TypeDecoder<?> typeDecoder = decoder.readNextTypeDecoder(buffer, decoderState);
+            assertEquals(Object.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.readValue(buffer, decoderState));
+        }
+
+        buffer.setReadOffset(0);  // Reset and try with limits lifted
+
+        decoderState.setMaxZeroWidthArrayElements(2);
+        streamDecoderState.setMaxZeroWidthArrayElements(2);
+
+        if (fromStream) {
+            InputStream stream = new ProtonBufferInputStream(buffer.copy(true));
+            StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
+            assertEquals(Object.class, typeDecoder.getTypeClass());
+            assertTrue(typeDecoder.readValue(stream, streamDecoderState) instanceof UnknownDescribedType[]);
+        } else {
+            TypeDecoder<?> typeDecoder = decoder.readNextTypeDecoder(buffer, decoderState);
+            assertEquals(Object.class, typeDecoder.getTypeClass());
+            assertTrue(typeDecoder.readValue(buffer, decoderState) instanceof UnknownDescribedType[]);
+        }
+    }
+
+    @Test
+    public void testCannotDecodeDescribedTypeWithNonPrimitiveValue() throws Exception {
+        doTestCannotDecodeDescribedTypeWithNonPrimitiveValue(false);
+    }
+
+    @Test
+    public void testCannotDecodeDescribedTypeWithNonPrimitiveValueFS() throws Exception {
+        doTestCannotDecodeDescribedTypeWithNonPrimitiveValue(true);
+    }
+
+    private void doTestCannotDecodeDescribedTypeWithNonPrimitiveValue(boolean fromStream) throws IOException {
+        final UnsignedLong DESCRIPTOR_CODE = UnsignedLong.valueOf(0xAA00468C00000003L);
+        final UnknownDescribedType toEncode =
+            new UnknownDescribedType(DESCRIPTOR_CODE, new UnknownDescribedType(DESCRIPTOR_CODE, null));
+        final ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        encoder.writeObject(buffer, encoderState, toEncode);
+
+        if (fromStream) {
+            InputStream stream = new ProtonBufferInputStream(buffer.copy(true));
+            assertThrows(DecodeException.class, () -> streamDecoder.readObject(stream, streamDecoderState));
+        } else {
+            assertThrows(DecodeException.class, () -> decoder.readObject(buffer.copy(true), decoderState));
         }
     }
 }

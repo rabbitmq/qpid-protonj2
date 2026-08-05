@@ -16,9 +16,11 @@
  */
 package org.apache.qpid.protonj2.codec.primitives;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -33,6 +35,7 @@ import org.apache.qpid.protonj2.codec.DecodeException;
 import org.apache.qpid.protonj2.codec.EncodingCodes;
 import org.apache.qpid.protonj2.codec.StreamTypeDecoder;
 import org.apache.qpid.protonj2.codec.TypeDecoder;
+import org.apache.qpid.protonj2.codec.decoders.PrimitiveArrayTypeDecoder;
 import org.apache.qpid.protonj2.codec.decoders.primitives.Integer32TypeDecoder;
 import org.apache.qpid.protonj2.codec.decoders.primitives.Integer8TypeDecoder;
 import org.apache.qpid.protonj2.codec.encoders.primitives.IntegerTypeEncoder;
@@ -353,7 +356,7 @@ public class IntegerTypeCodecTest extends CodecTestSupport {
 
         if (encoding == EncodingCodes.INT) {
             buffer.writeByte(EncodingCodes.ARRAY32);
-            buffer.writeInt(21);  // Size
+            buffer.writeInt(17);  // Size
             buffer.writeInt(3);   // Count
             buffer.writeByte(EncodingCodes.INT);
             buffer.writeInt(1);   // [0]
@@ -361,7 +364,7 @@ public class IntegerTypeCodecTest extends CodecTestSupport {
             buffer.writeInt(-1);  // [2]
         } else if (encoding == EncodingCodes.SMALLINT) {
             buffer.writeByte(EncodingCodes.ARRAY32);
-            buffer.writeInt(12);  // Size
+            buffer.writeInt(8);  // Size
             buffer.writeInt(3);   // Count
             buffer.writeByte(EncodingCodes.SMALLINT);
             buffer.writeByte((byte) 1);   // [0]
@@ -387,6 +390,55 @@ public class IntegerTypeCodecTest extends CodecTestSupport {
         assertEquals(1, array[0]);
         assertEquals(2, array[1]);
         assertEquals(-1, array[2]);
+    }
+
+    @Test
+    public void testReadIntegerArrayInt32FailsIfCountToLarge() throws IOException {
+        doTestReadIntegerArrayFailsIfCountToLarge(EncodingCodes.INT, false);
+    }
+
+    @Test
+    public void testReadIntegerArrayInt32FailsIfCountToLargeFromStream() throws IOException {
+        doTestReadIntegerArrayFailsIfCountToLarge(EncodingCodes.INT, true);
+    }
+
+    @Test
+    public void testReadIntegerArrayInt8FailsIfCountToLarge() throws IOException {
+        doTestReadIntegerArrayFailsIfCountToLarge(EncodingCodes.SMALLINT, false);
+    }
+
+    @Test
+    public void testReadIntegerArrayInt8FailsIfCountToLargeFromStream() throws IOException {
+        doTestReadIntegerArrayFailsIfCountToLarge(EncodingCodes.SMALLINT, true);
+    }
+
+    public void doTestReadIntegerArrayFailsIfCountToLarge(byte encoding, boolean fromStream) throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        if (encoding == EncodingCodes.INT) {
+            buffer.writeByte(EncodingCodes.ARRAY32);
+            buffer.writeInt(17);  // Size
+            buffer.writeInt(13);   // Count
+            buffer.writeByte(EncodingCodes.INT);
+            buffer.writeInt(1);   // [0]
+            buffer.writeInt(2);   // [1]
+            buffer.writeInt(-1);  // [2]
+        } else if (encoding == EncodingCodes.SMALLINT) {
+            buffer.writeByte(EncodingCodes.ARRAY32);
+            buffer.writeInt(8);   // Size
+            buffer.writeInt(4);   // Count
+            buffer.writeByte(EncodingCodes.SMALLINT);
+            buffer.writeByte((byte) 1);   // [0]
+            buffer.writeByte((byte) 2);   // [1]
+            buffer.writeByte((byte) -1);  // [2]
+        }
+
+        if (fromStream) {
+            InputStream stream = new ProtonBufferInputStream(buffer);
+            assertThrows(DecodeException.class, () -> streamDecoder.readObject(stream, streamDecoderState));
+        } else {
+            assertThrows(DecodeException.class, () -> decoder.readObject(buffer, decoderState));
+        }
     }
 
     @Test
@@ -419,6 +471,177 @@ public class IntegerTypeCodecTest extends CodecTestSupport {
             typeDecoder.readValue(buffer, decoderState);
             typeDecoder = decoder.readNextTypeDecoder(buffer, decoderState);
             assertEquals(4, typeDecoder.readSize(buffer, decoderState));
+        }
+    }
+
+    @Test
+    public void testReadIntArrayFailsWhenSizeIsToLarge() throws IOException {
+        doTestReadLongArrayFailsWhenSizeIsToLarge(EncodingCodes.INT);
+    }
+
+    @Test
+    public void testReadSmallIntArrayFailsWhenSizeIsToLarge() throws IOException {
+        doTestReadLongArrayFailsWhenSizeIsToLarge(EncodingCodes.SMALLINT);
+    }
+
+    public void doTestReadLongArrayFailsWhenSizeIsToLarge(byte encoding) throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        if (encoding == EncodingCodes.INT) {
+            buffer.writeByte(EncodingCodes.ARRAY32);
+            buffer.writeInt(25);  // Size
+            buffer.writeInt(2);   // Count
+            buffer.writeByte(EncodingCodes.INT);
+            buffer.writeInt(1);   // [0]
+            buffer.writeInt(-2);  // [1]
+        } else if (encoding == EncodingCodes.SMALLINT) {
+            buffer.writeByte(EncodingCodes.ARRAY8);
+            buffer.writeByte((byte) 11);  // Size
+            buffer.writeByte((byte) 2);   // Count
+            buffer.writeByte(EncodingCodes.SMALLINT);
+            buffer.writeByte((byte) 1);   // [0]
+            buffer.writeByte((byte) -2);  // [1]
+        }
+
+        assertThrows(DecodeException.class, () -> decoder.readObject(buffer, decoderState));
+    }
+
+    @Test
+    public void testEncodeAndDecodeArrayOfPrimitivesAsUnregisteredType() throws IOException {
+        doTestEncodeAndDecodeArrayOfPrimitivesAsUnregisteredType(false);
+    }
+
+    @Test
+    public void testEncodeAndDecodeArrayOfPrimitivesAsUnregisteredTypeFS() throws IOException {
+        doTestEncodeAndDecodeArrayOfPrimitivesAsUnregisteredType(true);
+    }
+
+    private void doTestEncodeAndDecodeArrayOfPrimitivesAsUnregisteredType(boolean fromStream) throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        int[] values = new int[] { 1, 2, 3, 4, 5 };
+
+        encoder.writeObject(buffer, encoderState, values);
+
+        final Object result;
+        if (fromStream) {
+            InputStream stream = new ProtonBufferInputStream(buffer);
+            result = streamDecoder.readObject(stream, streamDecoderState);
+        } else {
+            result = decoder.readObject(buffer, decoderState);
+        }
+
+        assertTrue(result.getClass().isArray());
+        assertTrue(result.getClass().getComponentType().isPrimitive());
+
+        int[] resultArray = (int[]) result;
+
+        assertArrayEquals(values, resultArray);
+    }
+
+    @Test
+    public void testDefaultsDecodeFailsForPrimitiveArrayIfCountIsToLargeArray32() throws Exception {
+        testDefaultsDecodeFailsForPrimitiveArrayWhenCountIsToLarge(true, false);
+    }
+
+    @Test
+    public void testDefaultsDecodeFailsForPrimitiveArrayIfCountIsToLargeArray32FromStream() throws Exception {
+        testDefaultsDecodeFailsForPrimitiveArrayWhenCountIsToLarge(true, true);
+    }
+
+    @Test
+    public void testDefaultsDecodeFailsForPrimitiveArrayIfCountIsToLargeArray8() throws Exception {
+        testDefaultsDecodeFailsForPrimitiveArrayWhenCountIsToLarge(false, false);
+    }
+
+    @Test
+    public void testDefaultsDecodeFailsForPrimitiveArrayIfCountIsToLargeArray8FromStream() throws Exception {
+        testDefaultsDecodeFailsForPrimitiveArrayWhenCountIsToLarge(false, true);
+    }
+
+    private void testDefaultsDecodeFailsForPrimitiveArrayWhenCountIsToLarge(boolean array32, boolean fromStream) throws Exception {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        streamDecoderState.setMaxArraySize(9);
+
+        if (array32) {
+            buffer.writeByte(EncodingCodes.ARRAY32);
+            buffer.writeInt(9);  // Size
+            buffer.writeInt(10);  // Count
+            buffer.writeByte(EncodingCodes.INT);
+            buffer.writeInt((byte) 1);
+        } else {
+            buffer.writeByte(EncodingCodes.ARRAY8);
+            buffer.writeByte((byte) 6);  // Size
+            buffer.writeByte((byte) 10);  // Count
+            buffer.writeByte(EncodingCodes.INT);
+            buffer.writeInt((byte) 1);
+        }
+
+        if (fromStream) {
+            InputStream stream = new ProtonBufferInputStream(buffer);
+            StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
+            assertTrue(typeDecoder instanceof PrimitiveArrayTypeDecoder);
+            PrimitiveArrayTypeDecoder arrayDecoder = (PrimitiveArrayTypeDecoder) typeDecoder;
+            assertThrows(DecodeException.class, () -> arrayDecoder.readValue(stream, streamDecoderState));
+        } else {
+            TypeDecoder<?> typeDecoder = decoder.readNextTypeDecoder(buffer, decoderState);
+            assertTrue(typeDecoder instanceof PrimitiveArrayTypeDecoder);
+            PrimitiveArrayTypeDecoder arrayDecoder = (PrimitiveArrayTypeDecoder) typeDecoder;
+            assertThrows(DecodeException.class, () -> arrayDecoder.readValue(buffer, decoderState));
+        }
+    }
+
+    @Test
+    public void testDefaultsDecodeFailsForSmallPrimitiveArrayIfCountIsToLargeArray32() throws Exception {
+        testDefaultsDecodeFailsForSmallPrimitiveArrayWhenCountIsToLarge(true, false);
+    }
+
+    @Test
+    public void testDefaultsDecodeFailsForSmallPrimitiveArrayIfCountIsToLargeArray32FromStream() throws Exception {
+        testDefaultsDecodeFailsForSmallPrimitiveArrayWhenCountIsToLarge(true, true);
+    }
+
+    @Test
+    public void testDefaultsDecodeFailsForSmallPrimitiveArrayIfCountIsToLargeArray8() throws Exception {
+        testDefaultsDecodeFailsForSmallPrimitiveArrayWhenCountIsToLarge(false, false);
+    }
+
+    @Test
+    public void testDefaultsDecodeFailsForSmallPrimitiveArrayIfCountIsToLargeArray8FromStream() throws Exception {
+        testDefaultsDecodeFailsForSmallPrimitiveArrayWhenCountIsToLarge(false, true);
+    }
+
+    private void testDefaultsDecodeFailsForSmallPrimitiveArrayWhenCountIsToLarge(boolean array32, boolean fromStream) throws Exception {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        streamDecoderState.setMaxArraySize(9);
+
+        if (array32) {
+            buffer.writeByte(EncodingCodes.ARRAY32);
+            buffer.writeInt(8);  // Size
+            buffer.writeInt(10);  // Count
+            buffer.writeByte(EncodingCodes.SMALLINT);
+            buffer.writeByte((byte) 1);
+        } else {
+            buffer.writeByte(EncodingCodes.ARRAY8);
+            buffer.writeByte((byte) 3);  // Size
+            buffer.writeByte((byte) 10);  // Count
+            buffer.writeByte(EncodingCodes.SMALLINT);
+            buffer.writeByte((byte) 1);
+        }
+
+        if (fromStream) {
+            InputStream stream = new ProtonBufferInputStream(buffer);
+            StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
+            assertTrue(typeDecoder instanceof PrimitiveArrayTypeDecoder);
+            PrimitiveArrayTypeDecoder arrayDecoder = (PrimitiveArrayTypeDecoder) typeDecoder;
+            assertThrows(DecodeException.class, () -> arrayDecoder.readValue(stream, streamDecoderState));
+        } else {
+            TypeDecoder<?> typeDecoder = decoder.readNextTypeDecoder(buffer, decoderState);
+            assertTrue(typeDecoder instanceof PrimitiveArrayTypeDecoder);
+            PrimitiveArrayTypeDecoder arrayDecoder = (PrimitiveArrayTypeDecoder) typeDecoder;
+            assertThrows(DecodeException.class, () -> arrayDecoder.readValue(buffer, decoderState));
         }
     }
 }

@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
@@ -30,6 +31,8 @@ import org.apache.qpid.protonj2.buffer.ProtonBuffer;
 import org.apache.qpid.protonj2.buffer.ProtonBufferAllocator;
 import org.apache.qpid.protonj2.buffer.ProtonBufferInputStream;
 import org.apache.qpid.protonj2.codec.CodecTestSupport;
+import org.apache.qpid.protonj2.codec.DecodeException;
+import org.apache.qpid.protonj2.codec.EncodingCodes;
 import org.apache.qpid.protonj2.codec.StreamTypeDecoder;
 import org.apache.qpid.protonj2.codec.TypeDecoder;
 import org.apache.qpid.protonj2.codec.decoders.messaging.AmqpValueTypeDecoder;
@@ -306,6 +309,259 @@ public class AmqpValueTypeCodecTest extends CodecTestSupport {
             assertNotNull(resultArray[i]);
             assertTrue(resultArray[i] instanceof AmqpValue);
             assertEquals(array[i].getValue(), resultArray[i].getValue());
+        }
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfTypeWithList0EncodingsArray8() throws IOException {
+        doTestDecodeFailsWhenArrayOfTypeWithList0Encodings(EncodingCodes.ARRAY8, false);
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfTypeWithList0EncodingsArray32() throws IOException {
+        doTestDecodeFailsWhenArrayOfTypeWithList0Encodings(EncodingCodes.ARRAY32, false);
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfTypeWithList0EncodingsArray8FS() throws IOException {
+        doTestDecodeFailsWhenArrayOfTypeWithList0Encodings(EncodingCodes.ARRAY8, true);
+    }
+
+    @Test
+    public void testDecodeFailsWhenArrayOfTypeWithList0EncodingsArray32FS() throws IOException {
+        doTestDecodeFailsWhenArrayOfTypeWithList0Encodings(EncodingCodes.ARRAY32, true);
+    }
+
+    private void doTestDecodeFailsWhenArrayOfTypeWithList0Encodings(byte arrayType, boolean fromStream) throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        // First show that we can do this if the data is correct
+        if (arrayType == EncodingCodes.ARRAY32) {
+            buffer.writeByte(EncodingCodes.ARRAY32);
+            buffer.writeInt(8);  // Size
+            buffer.writeInt(2);  // Count
+        } else {
+            buffer.writeByte(EncodingCodes.ARRAY8);
+            buffer.writeByte((byte) 5);  // Size
+            buffer.writeByte((byte) 2);  // Count
+        }
+        buffer.writeByte((byte) 0); // Described Type Indicator
+        buffer.writeByte(EncodingCodes.SMALLULONG);
+        buffer.writeByte(AmqpValue.DESCRIPTOR_CODE.byteValue());
+        buffer.writeByte(EncodingCodes.LIST0);
+
+        if (fromStream) {
+            InputStream stream = new ProtonBufferInputStream(buffer.copy(true));
+            StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
+            assertEquals(Object.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.readValue(stream, streamDecoderState));
+        } else {
+            TypeDecoder<?> typeDecoder = decoder.readNextTypeDecoder(buffer, decoderState);
+            assertEquals(Object.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.readValue(buffer, decoderState));
+        }
+
+        buffer.setReadOffset(0);  // Reset and try with limits lifted
+
+        decoderState.setMaxZeroWidthArrayElements(2);
+        streamDecoderState.setMaxZeroWidthArrayElements(2);
+
+        if (fromStream) {
+            InputStream stream = new ProtonBufferInputStream(buffer.copy(true));
+            StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
+            assertEquals(Object.class, typeDecoder.getTypeClass());
+            assertTrue(typeDecoder.readValue(stream, streamDecoderState) instanceof AmqpValue[]);
+        } else {
+            TypeDecoder<?> typeDecoder = decoder.readNextTypeDecoder(buffer, decoderState);
+            assertEquals(Object.class, typeDecoder.getTypeClass());
+            assertTrue(typeDecoder.readValue(buffer, decoderState) instanceof AmqpValue[]);
+        }
+    }
+
+    @Test
+    public void testNestedAmqpValueOfAmqpValuesReadValueTriggersDepthLimit() throws IOException {
+        doTestNestedAmqpValueOfAmqpValuesReadValueTriggersDepthLimit(false);
+    }
+
+    @Test
+    public void testNestedAmqpValueOfAmqpValuesReadValueTriggersDepthLimitFS() throws IOException {
+        doTestNestedAmqpValueOfAmqpValuesReadValueTriggersDepthLimit(true);
+    }
+
+    private void doTestNestedAmqpValueOfAmqpValuesReadValueTriggersDepthLimit(boolean fromStream) throws IOException {
+        final ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        buffer.writeByte((byte) 0); // Described Type Indicator - 1
+        buffer.writeByte(EncodingCodes.SMALLULONG);
+        buffer.writeByte(AmqpValue.DESCRIPTOR_CODE.byteValue());
+        buffer.writeByte((byte) 0); // Described Type Indicator - 2
+        buffer.writeByte(EncodingCodes.SMALLULONG);
+        buffer.writeByte(AmqpValue.DESCRIPTOR_CODE.byteValue());
+        buffer.writeByte((byte) 0); // Described Type Indicator - 3
+        buffer.writeByte(EncodingCodes.SMALLULONG);
+        buffer.writeByte(AmqpValue.DESCRIPTOR_CODE.byteValue());
+        buffer.writeByte((byte) 0); // Described Type Indicator - 4
+        buffer.writeByte(EncodingCodes.SMALLULONG);
+        buffer.writeByte(AmqpValue.DESCRIPTOR_CODE.byteValue());
+        buffer.writeByte(EncodingCodes.LIST0); // List Encoding - 5
+
+        if (fromStream) {
+            InputStream stream = new ProtonBufferInputStream(buffer.copy(true));
+            StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
+            assertEquals(AmqpValue.class, typeDecoder.getTypeClass());
+            assertTrue(typeDecoder.readValue(stream, streamDecoderState) instanceof AmqpValue);
+        } else {
+            TypeDecoder<?> typeDecoder = decoder.readNextTypeDecoder(buffer, decoderState);
+            assertEquals(AmqpValue.class, typeDecoder.getTypeClass());
+            assertTrue(typeDecoder.readValue(buffer, decoderState) instanceof AmqpValue);
+        }
+
+        buffer.setReadOffset(0);  // Reset and try with limits lifted
+
+        decoderState.setDepthLimit(4);
+        streamDecoderState.setDepthLimit(4);
+
+        if (fromStream) {
+            InputStream stream = new ProtonBufferInputStream(buffer.copy(true));
+            StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
+            assertEquals(AmqpValue.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.readValue(stream, streamDecoderState));
+        } else {
+            TypeDecoder<?> typeDecoder = decoder.readNextTypeDecoder(buffer, decoderState);
+            assertEquals(AmqpValue.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.readValue(buffer, decoderState));
+        }
+    }
+
+    @Test
+    public void testNestedAmqpValueOfAmqpValuesSkipValueTriggersDepthLimit() throws IOException {
+        doTestNestedAmqpValueOfAmqpValuesSkipValueTriggersDepthLimit(false);
+    }
+
+    @Test
+    public void testNestedAmqpValueOfAmqpValuesSkipValueTriggersDepthLimitFS() throws IOException {
+        doTestNestedAmqpValueOfAmqpValuesSkipValueTriggersDepthLimit(true);
+    }
+
+    private void doTestNestedAmqpValueOfAmqpValuesSkipValueTriggersDepthLimit(boolean fromStream) throws IOException {
+        final ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        buffer.writeByte((byte) 0); // Described Type Indicator - 1
+        buffer.writeByte(EncodingCodes.SMALLULONG);
+        buffer.writeByte(AmqpValue.DESCRIPTOR_CODE.byteValue());
+        buffer.writeByte((byte) 0); // Described Type Indicator - 2
+        buffer.writeByte(EncodingCodes.SMALLULONG);
+        buffer.writeByte(AmqpValue.DESCRIPTOR_CODE.byteValue());
+        buffer.writeByte((byte) 0); // Described Type Indicator - 3
+        buffer.writeByte(EncodingCodes.SMALLULONG);
+        buffer.writeByte(AmqpValue.DESCRIPTOR_CODE.byteValue());
+        buffer.writeByte((byte) 0); // Described Type Indicator - 4
+        buffer.writeByte(EncodingCodes.SMALLULONG);
+        buffer.writeByte(AmqpValue.DESCRIPTOR_CODE.byteValue());
+        buffer.writeByte(EncodingCodes.LIST0); // List Encoding - 5
+
+        if (fromStream) {
+            InputStream stream = new ProtonBufferInputStream(buffer.copy(true));
+            StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
+            assertEquals(AmqpValue.class, typeDecoder.getTypeClass());
+            typeDecoder.skipValue(stream, streamDecoderState);
+        } else {
+            TypeDecoder<?> typeDecoder = decoder.readNextTypeDecoder(buffer, decoderState);
+            assertEquals(AmqpValue.class, typeDecoder.getTypeClass());
+            typeDecoder.skipValue(buffer, decoderState);
+        }
+
+        buffer.setReadOffset(0);  // Reset and try with limits lifted
+
+        decoderState.setDepthLimit(4);
+        streamDecoderState.setDepthLimit(4);
+
+        if (fromStream) {
+            InputStream stream = new ProtonBufferInputStream(buffer.copy(true));
+            StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
+            assertEquals(AmqpValue.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.skipValue(stream, streamDecoderState));
+        } else {
+            TypeDecoder<?> typeDecoder = decoder.readNextTypeDecoder(buffer, decoderState);
+            assertEquals(AmqpValue.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.skipValue(buffer, decoderState));
+        }
+    }
+
+    @Test
+    public void testNestedAmqpValueOfAmqpValueList8SkipValueTriggersDepthLimit() throws IOException {
+        doTestNestedAmqpValueOfAmqpValueListSkipValueTriggersDepthLimit(false, false);
+    }
+
+    @Test
+    public void testNestedAmqpValueOfAmqpValueList8SkipValueTriggersDepthLimitFS() throws IOException {
+        doTestNestedAmqpValueOfAmqpValueListSkipValueTriggersDepthLimit(false, true);
+    }
+
+    @Test
+    public void testNestedAmqpValueOfAmqpValueList32SkipValueTriggersDepthLimit() throws IOException {
+        doTestNestedAmqpValueOfAmqpValueListSkipValueTriggersDepthLimit(true, false);
+    }
+
+    @Test
+    public void testNestedAmqpValueOfAmqpValueList32SkipValueTriggersDepthLimitFS() throws IOException {
+        doTestNestedAmqpValueOfAmqpValueListSkipValueTriggersDepthLimit(true, true);
+    }
+
+    private void doTestNestedAmqpValueOfAmqpValueListSkipValueTriggersDepthLimit(boolean list8, boolean fromStream) throws IOException {
+        final ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        buffer.writeByte((byte) 0); // Described Type Indicator - 1
+        buffer.writeByte(EncodingCodes.SMALLULONG);
+        buffer.writeByte(AmqpValue.DESCRIPTOR_CODE.byteValue());
+        buffer.writeByte((byte) 0); // Described Type Indicator - 2
+        buffer.writeByte(EncodingCodes.SMALLULONG);
+        buffer.writeByte(AmqpValue.DESCRIPTOR_CODE.byteValue());
+
+        // Level 3 of depth
+        if (list8) {
+            buffer.writeByte(EncodingCodes.LIST8);
+            buffer.writeByte((byte) 5);
+            buffer.writeByte((byte) 2);
+            buffer.writeByte(EncodingCodes.BYTE);
+            buffer.writeByte((byte) 1);
+            buffer.writeByte(EncodingCodes.BYTE);
+            buffer.writeByte((byte) 2);
+        } else {
+            buffer.writeByte(EncodingCodes.LIST32);
+            buffer.writeInt(8);
+            buffer.writeInt(2);
+            buffer.writeByte(EncodingCodes.BYTE);
+            buffer.writeByte((byte) 1);
+            buffer.writeByte(EncodingCodes.BYTE);
+            buffer.writeByte((byte) 2);
+        }
+
+        if (fromStream) {
+            InputStream stream = new ProtonBufferInputStream(buffer.copy(true));
+            StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
+            assertEquals(AmqpValue.class, typeDecoder.getTypeClass());
+            typeDecoder.skipValue(stream, streamDecoderState);
+        } else {
+            TypeDecoder<?> typeDecoder = decoder.readNextTypeDecoder(buffer, decoderState);
+            assertEquals(AmqpValue.class, typeDecoder.getTypeClass());
+            typeDecoder.skipValue(buffer, decoderState);
+        }
+
+        buffer.setReadOffset(0);  // Reset and try with limits lifted
+
+        decoderState.setDepthLimit(2);
+        streamDecoderState.setDepthLimit(2);
+
+        if (fromStream) {
+            InputStream stream = new ProtonBufferInputStream(buffer.copy(true));
+            StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
+            assertEquals(AmqpValue.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.skipValue(stream, streamDecoderState));
+        } else {
+            TypeDecoder<?> typeDecoder = decoder.readNextTypeDecoder(buffer, decoderState);
+            assertEquals(AmqpValue.class, typeDecoder.getTypeClass());
+            assertThrows(DecodeException.class, () -> typeDecoder.skipValue(buffer, decoderState));
         }
     }
 }

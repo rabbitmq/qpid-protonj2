@@ -20,12 +20,13 @@ import java.io.InputStream;
 
 import org.apache.qpid.protonj2.buffer.ProtonBuffer;
 import org.apache.qpid.protonj2.codec.DecodeException;
+import org.apache.qpid.protonj2.codec.Decoder;
 import org.apache.qpid.protonj2.codec.DecoderState;
+import org.apache.qpid.protonj2.codec.EncodingCodes;
+import org.apache.qpid.protonj2.codec.StreamDecoder;
 import org.apache.qpid.protonj2.codec.StreamDecoderState;
-import org.apache.qpid.protonj2.codec.StreamTypeDecoder;
-import org.apache.qpid.protonj2.codec.TypeDecoder;
 import org.apache.qpid.protonj2.codec.decoders.AbstractDescribedListTypeDecoder;
-import org.apache.qpid.protonj2.codec.decoders.primitives.ListTypeDecoder;
+import org.apache.qpid.protonj2.codec.decoders.ProtonStreamUtils;
 import org.apache.qpid.protonj2.types.Symbol;
 import org.apache.qpid.protonj2.types.UnsignedInteger;
 import org.apache.qpid.protonj2.types.UnsignedLong;
@@ -37,6 +38,8 @@ import org.apache.qpid.protonj2.types.messaging.TerminusExpiryPolicy;
  * Decoder of AMQP Target type values from a byte stream
  */
 public final class TargetTypeDecoder extends AbstractDescribedListTypeDecoder<Target> {
+
+    public static final TargetTypeDecoder INSTANCE = new TargetTypeDecoder();
 
     private static final int MIN_TARGET_LIST_ENTRIES = 0;
     private static final int MAX_TARGET_LIST_ENTRIES = 7;
@@ -57,51 +60,36 @@ public final class TargetTypeDecoder extends AbstractDescribedListTypeDecoder<Ta
     }
 
     @Override
-    public Target readValue(ProtonBuffer buffer, DecoderState state) throws DecodeException {
-        final TypeDecoder<?> decoder = state.getDecoder().readNextTypeDecoder(buffer, state);
-
-        return readTarget(buffer, state, checkIsExpectedTypeAndCast(ListTypeDecoder.class, decoder));
+    protected int getMinListElements() {
+        return MIN_TARGET_LIST_ENTRIES;
     }
 
     @Override
-    public Target[] readArrayElements(ProtonBuffer buffer, DecoderState state, int count) throws DecodeException {
-        final TypeDecoder<?> decoder = state.getDecoder().readNextTypeDecoder(buffer, state);
-
-        final Target[] result = new Target[count];
-        for (int i = 0; i < count; ++i) {
-            result[i] = readTarget(buffer, state, checkIsExpectedTypeAndCast(ListTypeDecoder.class, decoder));
-        }
-
-        return result;
+    protected int getMaxListElements() {
+        return MAX_TARGET_LIST_ENTRIES;
     }
 
-    private Target readTarget(ProtonBuffer buffer, DecoderState state, ListTypeDecoder listDecoder) throws DecodeException {
+    @Override
+    protected Target readType(int count, ProtonBuffer buffer, Decoder decoder, DecoderState state) throws DecodeException {
         final Target target = new Target();
 
-        @SuppressWarnings("unused")
-        final int size = listDecoder.readSize(buffer, state);
-        final int count = listDecoder.readCount(buffer, state);
-
-        if (count < MIN_TARGET_LIST_ENTRIES) {
-            throw new DecodeException("Not enough entries in Target list encoding: " + count);
-        }
-
-        if (count > MAX_TARGET_LIST_ENTRIES) {
-            throw new DecodeException("To many entries in Target list encoding: " + count);
-        }
-
         for (int index = 0; index < count; ++index) {
+            if (buffer.peekByte() == EncodingCodes.NULL) {
+                buffer.advanceReadOffset(1);
+                continue;
+            }
+
             switch (index) {
-                case 0 -> target.setAddress(state.getDecoder().readString(buffer, state));
-                case 1 -> target.setDurable(TerminusDurability.valueOf(state.getDecoder().readUnsignedInteger(buffer, state, 0)));
+                case 0 -> target.setAddress(decoder.readString(buffer, state));
+                case 1 -> target.setDurable(TerminusDurability.valueOf(decoder.readUnsignedInteger(buffer, state, 0)));
                 case 2 -> {
-                    final Symbol expiryPolicy = state.getDecoder().readSymbol(buffer, state);
+                    final Symbol expiryPolicy = decoder.readSymbol(buffer, state);
                     target.setExpiryPolicy(expiryPolicy == null ? TerminusExpiryPolicy.SESSION_END : TerminusExpiryPolicy.valueOf(expiryPolicy));
                 }
-                case 3 -> target.setTimeout(state.getDecoder().readUnsignedInteger(buffer, state, UnsignedInteger.ZERO));
-                case 4 -> target.setDynamic(state.getDecoder().readBoolean(buffer, state, false));
-                case 5 -> target.setDynamicNodeProperties(state.getDecoder().readMap(buffer, state));
-                case 6 -> target.setCapabilities(state.getDecoder().readMultiple(buffer, state, Symbol.class));
+                case 3 -> target.setTimeout(decoder.readUnsignedInteger(buffer, state, UnsignedInteger.ZERO));
+                case 4 -> target.setDynamic(decoder.readBoolean(buffer, state, false));
+                case 5 -> target.setDynamicNodeProperties(decoder.readMap(buffer, state));
+                case 6 -> target.setCapabilities(decoder.readMultiple(buffer, state, Symbol.class));
             }
         }
 
@@ -109,40 +97,22 @@ public final class TargetTypeDecoder extends AbstractDescribedListTypeDecoder<Ta
     }
 
     @Override
-    public Target readValue(InputStream stream, StreamDecoderState state) throws DecodeException {
-        final StreamTypeDecoder<?> decoder = state.getDecoder().readNextTypeDecoder(stream, state);
-
-        return readTarget(stream, state, checkIsExpectedTypeAndCast(ListTypeDecoder.class, decoder));
-    }
-
-    @Override
-    public Target[] readArrayElements(InputStream stream, StreamDecoderState state, int count) throws DecodeException {
-        final StreamTypeDecoder<?> decoder = state.getDecoder().readNextTypeDecoder(stream, state);
-
-        final Target[] result = new Target[count];
-        for (int i = 0; i < count; ++i) {
-            result[i] = readTarget(stream, state, checkIsExpectedTypeAndCast(ListTypeDecoder.class, decoder));
-        }
-
-        return result;
-    }
-
-    private Target readTarget(InputStream stream, StreamDecoderState state, ListTypeDecoder listDecoder) throws DecodeException {
+    protected Target readType(int count, InputStream stream, StreamDecoder decoder, StreamDecoderState state) throws DecodeException {
         final Target target = new Target();
 
-        @SuppressWarnings("unused")
-        final int size = listDecoder.readSize(stream, state);
-        final int count = listDecoder.readCount(stream, state);
-
-        if (count < MIN_TARGET_LIST_ENTRIES) {
-            throw new DecodeException("Not enough entries in Target list encoding: " + count);
-        }
-
-        if (count > MAX_TARGET_LIST_ENTRIES) {
-            throw new DecodeException("To many entries in Target list encoding: " + count);
-        }
-
         for (int index = 0; index < count; ++index) {
+            // If the stream allows we peek ahead and see if there is a null in the next slot,
+            // if so we don't call the setter for that entry to ensure the returned type reflects
+            // the encoded state in the modification entry.
+            if (stream.markSupported()) {
+                stream.mark(1);
+                if (ProtonStreamUtils.readByte(stream) == EncodingCodes.NULL) {
+                    continue;
+                } else {
+                    ProtonStreamUtils.reset(stream);
+                }
+            }
+
             switch (index) {
                 case 0 -> target.setAddress(state.getDecoder().readString(stream, state));
                 case 1 -> target.setDurable(TerminusDurability.valueOf(state.getDecoder().readUnsignedInteger(stream, state, 0)));
@@ -150,10 +120,10 @@ public final class TargetTypeDecoder extends AbstractDescribedListTypeDecoder<Ta
                     final Symbol expiryPolicy = state.getDecoder().readSymbol(stream, state);
                     target.setExpiryPolicy(expiryPolicy == null ? TerminusExpiryPolicy.SESSION_END : TerminusExpiryPolicy.valueOf(expiryPolicy));
                 }
-                case 3 -> target.setTimeout(state.getDecoder().readUnsignedInteger(stream, state, UnsignedInteger.ZERO));
-                case 4 -> target.setDynamic(state.getDecoder().readBoolean(stream, state, false));
-                case 5 -> target.setDynamicNodeProperties(state.getDecoder().readMap(stream, state));
-                case 6 -> target.setCapabilities(state.getDecoder().readMultiple(stream, state, Symbol.class));
+                case 3 -> target.setTimeout(decoder.readUnsignedInteger(stream, state, UnsignedInteger.ZERO));
+                case 4 -> target.setDynamic(decoder.readBoolean(stream, state, false));
+                case 5 -> target.setDynamicNodeProperties(decoder.readMap(stream, state));
+                case 6 -> target.setCapabilities(decoder.readMultiple(stream, state, Symbol.class));
             }
         }
 

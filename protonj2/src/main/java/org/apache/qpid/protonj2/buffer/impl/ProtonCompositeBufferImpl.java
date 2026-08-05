@@ -2119,6 +2119,21 @@ public final class ProtonCompositeBufferImpl extends SharedResource<ProtonBuffer
         }
 
         @Override
+        public int componentCount() {
+            return composite.componentCount();
+        }
+
+        @Override
+        public int readableComponentCount() {
+            return composite.readableComponentCount();
+        }
+
+        @Override
+        public int writableComponentCount() {
+            return composite.writableComponentCount();
+        }
+
+        @Override
         public ProtonBufferComponent first() {
             if (currentAccessor != null) {
                 currentAccessor.close();

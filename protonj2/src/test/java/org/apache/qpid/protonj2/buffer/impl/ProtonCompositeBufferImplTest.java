@@ -1932,9 +1932,10 @@ public class ProtonCompositeBufferImplTest extends ProtonAbstractBufferTest {
 
             try (ProtonBufferComponentAccessor accessor = buffer.componentAccessor()) {
                 for (ProtonBufferComponent component : accessor.components()) {
-                    assertTrue(component.getNativeAddress() != 0);
-                    assertTrue(component.getNativeReadAddress() != 0);
-                    assertTrue(component.getNativeWriteAddress() != 0);
+                    // Not currently exposed, will fail if later we expose native addresses.
+                    assertTrue(component.getNativeAddress() == 0);
+                    assertTrue(component.getNativeReadAddress() == 0);
+                    assertTrue(component.getNativeWriteAddress() == 0);
                 }
             }
         }
@@ -1958,9 +1959,10 @@ public class ProtonCompositeBufferImplTest extends ProtonAbstractBufferTest {
             try (ProtonBufferComponentAccessor accessor = buffer.componentAccessor()) {
                 for (ProtonBufferComponent component : accessor.components()) {
                     if (count++ == 0) {
-                        assertTrue(component.getNativeAddress() != 0);
-                        assertTrue(component.getNativeReadAddress() != 0);
-                        assertTrue(component.getNativeWriteAddress() != 0);
+                        // Not currently exposed, will fail if later we expose native addresses.
+                        assertTrue(component.getNativeAddress() == 0);
+                        assertTrue(component.getNativeReadAddress() == 0);
+                        assertTrue(component.getNativeWriteAddress() == 0);
                     } else {
                         assertTrue(component.getNativeAddress() == 0);
                         assertTrue(component.getNativeReadAddress() == 0);

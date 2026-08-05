@@ -35,7 +35,7 @@ public class SaslMechanismsTest {
     @Test
     public void testRequestInvalidMechanismName() {
         try {
-            SaslMechanisms.valueOf(Symbol.valueOf("TEST"));
+            SaslMechanisms.valueOf(Symbol.getSASLSymbol("TEST"));
             fail("Should throw when invalid mechanism name given.");
         } catch (IllegalArgumentException iae) {
             // Expected

@@ -760,7 +760,7 @@ public abstract class ProtonBufferUtils {
         }
 
         return equalsImpl(left, left.getReadOffset(), right, right.getReadOffset(), length);
-    }
+   }
 
     /**
      * Compares two {@link ProtonBuffer} instances for equality.

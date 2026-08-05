@@ -21,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -129,17 +130,17 @@ public class SymbolTypeCodecTest extends CodecTestSupport {
 
     @Test
     public void testEncodeSmallSymbol() throws IOException {
-        doTestEncodeDecode(Symbol.valueOf(SMALL_SYMBOL_VALUE), false);
+        doTestEncodeDecode(Symbol.getSymbol(SMALL_SYMBOL_VALUE), false);
     }
 
     @Test
     public void testEncodeLargeSymbol() throws IOException {
-        doTestEncodeDecode(Symbol.valueOf(LARGE_SYMBOL_VALUE), false);
+        doTestEncodeDecode(Symbol.getSymbol(LARGE_SYMBOL_VALUE), false);
     }
 
     @Test
     public void testEncodeEmptySymbol() throws IOException {
-        doTestEncodeDecode(Symbol.valueOf(""), false);
+        doTestEncodeDecode(Symbol.getSymbol(""), false);
     }
 
     @Test
@@ -149,17 +150,17 @@ public class SymbolTypeCodecTest extends CodecTestSupport {
 
     @Test
     public void testEncodeSmallSymbolFS() throws IOException {
-        doTestEncodeDecode(Symbol.valueOf(SMALL_SYMBOL_VALUE), true);
+        doTestEncodeDecode(Symbol.getSymbol(SMALL_SYMBOL_VALUE), true);
     }
 
     @Test
     public void testEncodeLargeSymbolFS() throws IOException {
-        doTestEncodeDecode(Symbol.valueOf(LARGE_SYMBOL_VALUE), true);
+        doTestEncodeDecode(Symbol.getSymbol(LARGE_SYMBOL_VALUE), true);
     }
 
     @Test
     public void testEncodeEmptySymbolFS() throws IOException {
-        doTestEncodeDecode(Symbol.valueOf(""), true);
+        doTestEncodeDecode(Symbol.getSymbol(""), true);
     }
 
     @Test
@@ -214,7 +215,7 @@ public class SymbolTypeCodecTest extends CodecTestSupport {
         ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
 
         for (int i = 0; i < size; ++i) {
-            encoder.writeSymbol(buffer, encoderState, Symbol.valueOf(LARGE_SYMBOL_VALUE));
+            encoder.writeSymbol(buffer, encoderState, Symbol.getSymbol(LARGE_SYMBOL_VALUE));
         }
 
         final InputStream stream;
@@ -263,7 +264,7 @@ public class SymbolTypeCodecTest extends CodecTestSupport {
 
         Symbol[] source = new Symbol[size];
         for (int i = 0; i < size; ++i) {
-            source[i] = Symbol.valueOf("test->" + i);
+            source[i] = Symbol.getSymbol("test->" + i);
         }
 
         encoder.writeArray(buffer, encoderState, source);
@@ -510,7 +511,7 @@ public class SymbolTypeCodecTest extends CodecTestSupport {
 
         Symbol[] payload = new Symbol[length];
         for (int i = 0; i < length; i++) {
-            payload[i] = Symbol.valueOf(String.valueOf(rand.nextInt(9)));
+            payload[i] = Symbol.getSymbol(String.valueOf(rand.nextInt(9)));
         }
 
         return payload;
@@ -530,10 +531,10 @@ public class SymbolTypeCodecTest extends CodecTestSupport {
         ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
 
         for (int i = 0; i < 10; ++i) {
-            encoder.writeSymbol(buffer, encoderState, Symbol.valueOf("skipMe"));
+            encoder.writeSymbol(buffer, encoderState, Symbol.getSymbol("skipMe"));
         }
 
-        Symbol expected = Symbol.valueOf("expected-symbol-value");
+        Symbol expected = Symbol.getSymbol("expected-symbol-value");
 
         encoder.writeObject(buffer, encoderState, expected);
 
@@ -574,7 +575,7 @@ public class SymbolTypeCodecTest extends CodecTestSupport {
     public void testStreamSkipOfEncodingHandlesIOException() throws IOException {
         ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
 
-        encoder.writeObject(buffer, encoderState, Symbol.valueOf("TEST-SYMBOL-VALUE"));
+        encoder.writeObject(buffer, encoderState, Symbol.getSymbol("TEST-SYMBOL-VALUE"));
 
         InputStream stream = new ProtonBufferInputStream(buffer);
         StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
@@ -620,5 +621,96 @@ public class SymbolTypeCodecTest extends CodecTestSupport {
             typeDecoder = decoder.readNextTypeDecoder(buffer, decoderState);
             assertEquals(16, typeDecoder.readSize(buffer, decoderState));
         }
+    }
+
+    @Test
+    public void testStreamDecodeFailsWhenEncodedLengthExceedsConfigurationSym8() throws IOException {
+        doTestStreamDecodeFailsWhenEncodedLengthExceedsConfiguration(true);
+    }
+
+    @Test
+    public void testStreamDecodeFailsWhenEncodedLengthExceedsConfigurationSym32() throws IOException {
+        doTestStreamDecodeFailsWhenEncodedLengthExceedsConfiguration(false);
+    }
+
+    private void doTestStreamDecodeFailsWhenEncodedLengthExceedsConfiguration(boolean smallEncoding) throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        final byte[] payload = new byte[256];
+
+        streamDecoderState.setMaxSymbolSize(24);
+
+        if (smallEncoding) {
+            buffer.writeByte(EncodingCodes.SYM8);
+            buffer.writeByte((byte) 127);
+        } else {
+            buffer.writeByte(EncodingCodes.SYM32);
+            buffer.writeInt(127);
+        }
+        buffer.writeBytes(payload);
+
+        InputStream stream = new ProtonBufferInputStream(buffer);
+        StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
+        assertThrows(DecodeException.class, () -> typeDecoder.readValue(stream, streamDecoderState));
+    }
+
+    @Test
+    public void testStreamSkipValueFailsWhenEncodedLengthExceedsConfigurationSym8() throws IOException {
+        doTestStreamSkipValueFailsWhenEncodedLengthExceedsConfiguration(true);
+    }
+
+    @Test
+    public void testStreamSkipValueFailsWhenEncodedLengthExceedsConfigurationSym32() throws IOException {
+        doTestStreamSkipValueFailsWhenEncodedLengthExceedsConfiguration(false);
+    }
+
+    private void doTestStreamSkipValueFailsWhenEncodedLengthExceedsConfiguration(boolean smallEncoding) throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        final byte[] payload = new byte[256];
+
+        streamDecoderState.setMaxSymbolSize(24);
+
+        if (smallEncoding) {
+            buffer.writeByte(EncodingCodes.SYM8);
+            buffer.writeByte((byte) 127);
+        } else {
+            buffer.writeByte(EncodingCodes.SYM32);
+            buffer.writeInt(127);
+        }
+        buffer.writeBytes(payload);
+
+        InputStream stream = new ProtonBufferInputStream(buffer);
+        StreamTypeDecoder<?> typeDecoder = streamDecoder.readNextTypeDecoder(stream, streamDecoderState);
+        assertThrows(DecodeException.class, () -> typeDecoder.skipValue(stream, streamDecoderState));
+    }
+
+    @Test
+    public void testDecoderSkipValueFailsWhenEncodedLengthExceedsRemainingSym8() throws IOException {
+        doTestDecoderSkipValueFailsWhenEncodedLengthExceedsRemaining(true);
+    }
+
+    @Test
+    public void testDecoderSkipValueFailsWhenEncodedLengthExceedsRemainingSym32() throws IOException {
+        doTestDecoderSkipValueFailsWhenEncodedLengthExceedsRemaining(false);
+    }
+
+    private void doTestDecoderSkipValueFailsWhenEncodedLengthExceedsRemaining(boolean smallEncoding) throws IOException {
+        ProtonBuffer buffer = ProtonBufferAllocator.defaultAllocator().allocate();
+
+        final byte[] payload = new byte[127];
+
+        if (smallEncoding) {
+            buffer.writeByte(EncodingCodes.SYM8);
+            buffer.writeByte((byte) 128);
+        } else {
+            buffer.writeByte(EncodingCodes.SYM32);
+            buffer.writeInt(128);
+        }
+        buffer.writeBytes(payload);
+
+        TypeDecoder<?> typeDecoder = decoder.readNextTypeDecoder(buffer, decoderState);
+        assertEquals(Symbol.class, typeDecoder.getTypeClass());
+        assertThrows(DecodeException.class, () -> typeDecoder.skipValue(buffer, decoderState));
     }
 }

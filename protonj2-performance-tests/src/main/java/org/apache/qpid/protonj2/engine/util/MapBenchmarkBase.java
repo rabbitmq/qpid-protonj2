@@ -86,11 +86,15 @@ public abstract class MapBenchmarkBase {
 
     @Benchmark
     public void produceAndConsume(Blackhole blackHole) {
-        for (int i = 0; i < 32; ++i) {
-            map.put(UnsignedInteger.valueOf(i), DUMMY_STRING);
-        }
-
         for (int p = 0, c = map.size(); p < DEFAULT_MAP_VALUE_RANGE; ++p, ++c) {
+            blackHole.consume(filledMap.put(UnsignedInteger.valueOf(p), DUMMY_STRING));
+            blackHole.consume(filledMap.remove(UnsignedInteger.valueOf(c)));
+        }
+    }
+
+    @Benchmark
+    public void produceAndConsumeTailChasesHead(Blackhole blackHole) {
+        for (int p = DEFAULT_MAP_VALUE_RANGE, c = 0; c < DEFAULT_MAP_VALUE_RANGE; ++p, ++c) {
             blackHole.consume(filledMap.put(UnsignedInteger.valueOf(p), DUMMY_STRING));
             blackHole.consume(filledMap.remove(UnsignedInteger.valueOf(c)));
         }

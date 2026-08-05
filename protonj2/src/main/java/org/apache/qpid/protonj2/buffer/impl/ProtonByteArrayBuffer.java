@@ -341,7 +341,11 @@ public final class ProtonByteArrayBuffer extends SharedResource<ProtonBuffer> im
 
     @Override
     public boolean equals(Object o) {
-        return o instanceof ProtonBuffer buffer && ProtonBufferUtils.equals(this, buffer);
+        if (o instanceof ProtonBuffer buffer) {
+            return ProtonBufferUtils.equals(this, buffer);
+        }
+
+        return false;
     }
 
     @Override
@@ -827,7 +831,7 @@ public final class ProtonByteArrayBuffer extends SharedResource<ProtonBuffer> im
 
     @Override
     public int getReadableArrayOffset() {
-        return arrayOffset;
+        return arrayOffset + readOffset;
     }
 
     @Override

@@ -1050,7 +1050,7 @@ public class ProtonSessionTest extends ProtonEngineTestSupport {
         // Expect that a flow will be emitted and the window should match either default window
         // size or computed value if max frame size and capacity are set
         peer.expectFlow().withLinkCredit(1)
-                           .withIncomingWindow(expectedWindowSize);
+                         .withIncomingWindow(expectedWindowSize);
         peer.remoteTransfer().withDeliveryId(0)
                              .withDeliveryTag(new byte[] {0})
                              .withMore(false)
@@ -1094,6 +1094,88 @@ public class ProtonSessionTest extends ProtonEngineTestSupport {
 
         peer.waitForScriptToComplete();
         assertNull(failure);
+    }
+
+    @Test
+    public void testSessionIncomingWindowExceededByRemoteTriggersEngineFailure() {
+        final int TEST_MAX_FRAME_SIZE = 5 * 1024;
+        final int TEST_SESSION_CAPACITY = 15 * 1024;
+
+        Engine engine = EngineFactory.PROTON.createNonSaslEngine();
+        engine.errorHandler(result -> failure = result.failureCause());
+        ProtonTestConnector peer = createTestPeer(engine);
+
+        final Matcher<?> expectedMaxFrameSize = new UnsignedIntegerMatcher(TEST_MAX_FRAME_SIZE);
+
+        final long expectedWindowSize = TEST_SESSION_CAPACITY / TEST_MAX_FRAME_SIZE; // Window of three
+        final int sessionCapacity = TEST_SESSION_CAPACITY;
+
+        peer.expectAMQPHeader().respondWithAMQPHeader();
+        peer.expectOpen().withMaxFrameSize(expectedMaxFrameSize).respond();
+        peer.expectBegin().withIncomingWindow(expectedWindowSize).respond();
+        peer.expectAttach().respond();
+
+        Connection connection = engine.start();
+        connection.setMaxFrameSize(TEST_MAX_FRAME_SIZE);
+        connection.open();
+
+        Session session = connection.session();
+
+        session.setIncomingCapacity(sessionCapacity);
+        session.open();
+
+        assertEquals(sessionCapacity, session.getRemainingIncomingCapacity());
+        assertEquals(sessionCapacity, session.getIncomingCapacity(), "Unexpected session capacity");
+
+        // Use a receiver to force more session window observations.
+        Receiver receiver = session.receiver("receiver");
+        receiver.open();
+
+        final AtomicInteger deliveryArrived = new AtomicInteger();
+        final AtomicReference<IncomingDelivery> delivered = new AtomicReference<>();
+        receiver.deliveryReadHandler(delivery -> {
+            deliveryArrived.incrementAndGet();
+            delivered.set(delivery);
+        });
+
+        // Expect a flow and then use up the expected window of three transfers
+        peer.expectFlow().withLinkCredit(4)
+                         .withIncomingWindow(3);
+        peer.remoteTransfer().withDeliveryId(0)
+                             .withDeliveryTag(new byte[] {0})
+                             .withMore(false)
+                             .withMessageFormat(0)
+                             .withBody().withData(new byte[1000]).also().queue();
+        peer.remoteTransfer().withDeliveryId(1)
+                             .withDeliveryTag(new byte[] {1})
+                             .withMore(false)
+                             .withMessageFormat(0)
+                             .withBody().withData(new byte[1000]).also().queue();
+        peer.remoteTransfer().withDeliveryId(2)
+                             .withDeliveryTag(new byte[] {2})
+                             .withMore(false)
+                             .withMessageFormat(0)
+                             .withBody().withData(new byte[1000]).also().queue();
+
+        receiver.addCredit(4);
+
+        peer.waitForScriptToComplete();
+
+        assertEquals(3, deliveryArrived.get(), "Unexpected delivery count");
+        assertNotNull(delivered.get());
+
+        // This exceeds the window and should cause the engine to fail
+        peer.expectClose();
+        peer.remoteTransfer().withDeliveryId(3)
+                             .withDeliveryTag(new byte[] {3})
+                             .withMore(false)
+                             .withMessageFormat(0)
+                             .withBody().withData(new byte[1000]).also().now();
+
+        peer.waitForScriptToComplete();
+        assertNotNull(failure);
+        assertTrue(failure instanceof ProtocolViolationException);
+        assertEquals(SessionError.WINDOW_VIOLATION, ((ProtocolViolationException) failure).getErrorCondition());
     }
 
     @Test
@@ -2779,5 +2861,49 @@ public class ProtonSessionTest extends ProtonEngineTestSupport {
         assertTrue(deliveryReadBySession.get());
 
         assertNull(failure);
+    }
+
+    @Test
+    public void testSecondBeginOnExistingSessionTriggersEngineFailure() throws Exception {
+        Engine engine = EngineFactory.PROTON.createNonSaslEngine();
+        engine.errorHandler(result -> failure = result.failureCause());
+        ProtonTestConnector peer = createTestPeer(engine);
+
+        peer.expectAMQPHeader();
+        peer.expectOpen();
+        peer.expectBegin().onChannel(0);
+
+        final AtomicBoolean connectionRemotelyOpened = new AtomicBoolean();
+        final AtomicBoolean sessionRemotelyOpened = new AtomicBoolean();
+
+        final AtomicReference<Session> remoteSession = new AtomicReference<>();
+
+        Connection connection = engine.start();
+        assertNotNull(connection);
+
+        connection.openHandler(result -> {
+            connectionRemotelyOpened.set(true);
+            result.open();
+        });
+
+        connection.sessionOpenHandler(result -> {
+            remoteSession.set(result);
+            sessionRemotelyOpened.set(true);
+            result.open();
+        });
+
+        peer.remoteAMQPHeader().now();
+        peer.remoteOpen().withContainerId("test").now();
+        peer.remoteBegin().onChannel(0).now();
+
+        assertTrue(connectionRemotelyOpened.get(), "Connection remote opened event did not fire");
+        assertTrue(sessionRemotelyOpened.get(), "Session remote opened event did not fire");
+        assertNotNull(remoteSession.get(), "Connection did not create a local session for remote open");
+
+        peer.waitForScriptToComplete();
+
+        peer.remoteBegin().onChannel(0).now();
+
+        assertNotNull(failure);
     }
 }

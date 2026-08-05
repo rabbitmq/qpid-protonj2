@@ -50,7 +50,7 @@ public class SaslMechanismsTest {
 
     @Test
     public void testToStringOnNonEmptyObject() {
-        Symbol[] mechanisms = new Symbol[] { Symbol.valueOf("EXTERNAL"), Symbol.valueOf("PLAIN") };
+        Symbol[] mechanisms = new Symbol[] { Symbol.getSASLSymbol("EXTERNAL"), Symbol.getSASLSymbol("PLAIN") };
         SaslMechanisms value = new SaslMechanisms();
 
         value.setSaslServerMechanisms(mechanisms);
@@ -85,7 +85,7 @@ public class SaslMechanismsTest {
 
     @Test
     public void testCopy() {
-        Symbol[] mechanisms = new Symbol[] { Symbol.valueOf("EXTERNAL"), Symbol.valueOf("PLAIN") };
+        Symbol[] mechanisms = new Symbol[] { Symbol.getSASLSymbol("EXTERNAL"), Symbol.getSASLSymbol("PLAIN") };
         SaslMechanisms value = new SaslMechanisms();
 
         value.setSaslServerMechanisms(mechanisms);

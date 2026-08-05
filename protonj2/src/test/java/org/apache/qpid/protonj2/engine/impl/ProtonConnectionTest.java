@@ -1889,4 +1889,35 @@ public class ProtonConnectionTest extends ProtonEngineTestSupport {
         peer.waitForScriptToComplete();
         assertNotNull(failure);
     }
+
+    @Test
+    public void testSecondOpenTriggersEngineFailure() throws Exception {
+        Engine engine = EngineFactory.PROTON.createNonSaslEngine();
+        engine.errorHandler(result -> failure = result.failureCause());
+        ProtonTestConnector peer = createTestPeer(engine);
+
+        peer.expectAMQPHeader();
+        peer.expectOpen();
+
+        final AtomicBoolean connectionRemotelyOpened = new AtomicBoolean();
+
+        Connection connection = engine.start();
+        assertNotNull(connection);
+
+        connection.openHandler(result -> {
+            connectionRemotelyOpened.set(true);
+            result.open();
+        });
+
+        peer.remoteAMQPHeader().now();
+        peer.remoteOpen().withContainerId("test").now();
+
+        assertTrue(connectionRemotelyOpened.get(), "Connection remote opened event did not fire");
+
+        peer.waitForScriptToComplete();
+
+        peer.remoteOpen().withContainerId("test").now();
+
+        assertNotNull(failure);
+    }
 }

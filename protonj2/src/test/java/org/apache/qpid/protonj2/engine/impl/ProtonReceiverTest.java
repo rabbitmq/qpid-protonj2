@@ -74,9 +74,11 @@ import org.apache.qpid.protonj2.types.messaging.Source;
 import org.apache.qpid.protonj2.types.messaging.Target;
 import org.apache.qpid.protonj2.types.transport.AmqpError;
 import org.apache.qpid.protonj2.types.transport.ErrorCondition;
+import org.apache.qpid.protonj2.types.transport.LinkError;
 import org.apache.qpid.protonj2.types.transport.ReceiverSettleMode;
 import org.apache.qpid.protonj2.types.transport.Role;
 import org.apache.qpid.protonj2.types.transport.SenderSettleMode;
+import org.apache.qpid.protonj2.types.transport.SessionError;
 import org.hamcrest.Matcher;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -4109,11 +4111,11 @@ public class ProtonReceiverTest extends ProtonEngineTestSupport {
         peer.expectOpen().respond().withContainerId("driver");
         peer.expectBegin().respond();
         peer.expectAttach().withRole(Role.RECEIVER.getValue()).respond();
-        peer.expectFlow().withLinkCredit(2).withIncomingWindow(1);
+        peer.expectFlow().withLinkCredit(2).withIncomingWindow(2);
         peer.expectDetach().respond();
 
         Connection connection = engine.start().setMaxFrameSize(1024).open();
-        Session session = connection.session().setIncomingCapacity(1024).open();
+        Session session = connection.session().setIncomingCapacity(2048).open();
         Receiver receiver = session.receiver("test");
 
         final AtomicReference<IncomingDelivery> received = new AtomicReference<>();
@@ -4719,5 +4721,257 @@ public class ProtonReceiverTest extends ProtonEngineTestSupport {
         // Check post conditions and done.
         peer.waitForScriptToComplete();
         assertNull(failure);
+    }
+
+    @Test
+    public void testSecondAttachTriggersEngineFailure() throws Exception {
+        Engine engine = EngineFactory.PROTON.createNonSaslEngine();
+        engine.errorHandler(result -> failure = result.failureCause());
+        ProtonTestConnector peer = createTestPeer(engine);
+
+        peer.expectAMQPHeader();
+        peer.expectOpen();
+        peer.expectBegin().onChannel(0).respond();
+        peer.expectAttach().ofReceiver().onChannel(0).withHandle(0);
+
+        final AtomicBoolean connectionRemotelyOpened = new AtomicBoolean();
+        final AtomicBoolean sessionRemotelyOpened = new AtomicBoolean();
+        final AtomicBoolean receiverRemotelyOpened = new AtomicBoolean();
+
+        final AtomicReference<Session> remoteSession = new AtomicReference<>();
+
+        Connection connection = engine.start();
+        assertNotNull(connection);
+
+        connection.openHandler(result -> {
+            connectionRemotelyOpened.set(true);
+            result.open();
+        });
+
+        connection.sessionOpenHandler(result -> {
+            remoteSession.set(result);
+            sessionRemotelyOpened.set(true);
+            result.open();
+        });
+
+        peer.remoteAMQPHeader().now();
+        peer.remoteOpen().withContainerId("test").now();
+        peer.remoteBegin().onChannel(0).now();
+
+        assertTrue(connectionRemotelyOpened.get(), "Connection remote opened event did not fire");
+        assertTrue(sessionRemotelyOpened.get(), "Session remote opened event did not fire");
+        assertNotNull(remoteSession.get(), "Connection did not create a local session for remote open");
+
+        remoteSession.get().receiverOpenHandler(result -> {
+            receiverRemotelyOpened.set(true);
+            result.open();
+        });
+
+        peer.remoteAttach().ofSender()
+                           .withHandle(0)
+                           .withInitialDeliveryCount(0)
+                           .onChannel(0).now();
+
+        peer.waitForScriptToComplete();
+
+        assertTrue(receiverRemotelyOpened.get(), "Receiver remote opened event did not fire");
+
+        peer.expectEnd().withError(SessionError.HANDLE_IN_USE.toString(),
+            "Attach received with handle that is already in use");
+
+        peer.remoteAttach().ofSender()
+                           .withHandle(0)
+                           .withInitialDeliveryCount(0)
+                           .onChannel(0).now();
+
+        peer.waitForScriptToComplete();
+
+        assertNull(failure);
+    }
+
+    public void testFailureOnViolationOfPerDeliveryTransferLimit() throws Exception {
+        Engine engine = EngineFactory.PROTON.createNonSaslEngine();
+        engine.errorHandler(result -> failure = result.failureCause());
+        engine.configuration().setMaxTransfersPerDelivery(2);
+        ProtonTestConnector peer = createTestPeer(engine);
+
+        String text = "test-string-for-split-frame-delivery";
+        byte[] encoded = text.getBytes(StandardCharsets.UTF_8);
+        byte[] first = Arrays.copyOfRange(encoded, 0, encoded.length / 2);
+        byte[] second = Arrays.copyOfRange(encoded, encoded.length / 2, encoded.length);
+
+        peer.expectAMQPHeader().respondWithAMQPHeader();
+        peer.expectOpen().respond().withContainerId("driver");
+        peer.expectBegin().respond();
+        peer.expectAttach().respond();
+        peer.expectFlow().withLinkCredit(1);
+        peer.remoteTransfer().withDeliveryId(0)
+                             .withDeliveryTag(new byte[] {0})
+                             .withMore(true)
+                             .withMessageFormat(0)
+                             .withBody().withData(first).also().queue();
+        peer.remoteTransfer().withDeliveryId(0)
+                             .withDeliveryTag(new byte[] {0})
+                             .withMore(true)
+                             .withMessageFormat(0)
+                             .withBody().withData(second).also().queue();
+        peer.expectClose().withError(LinkError.TRANSFER_LIMIT_EXCEEDED.toString());
+
+        Connection connection = engine.start();
+
+        // Default engine should start and return a connection immediately
+        assertNotNull(connection);
+
+        connection.open();
+        Session session = connection.session();
+        session.open();
+        Receiver receiver = session.receiver("test");
+
+        final AtomicBoolean deliveryArrived = new AtomicBoolean();
+        final AtomicReference<IncomingDelivery> receivedDelivery = new AtomicReference<>();
+        final AtomicInteger deliverReads = new AtomicInteger();
+
+        receiver.deliveryReadHandler(delivery -> {
+            deliveryArrived.set(true);
+            receivedDelivery.set(delivery);
+            deliverReads.incrementAndGet();
+        });
+
+        receiver.open();
+        receiver.addCredit(1);
+
+        assertTrue(deliveryArrived.get(), "Delivery did not arrive at the receiver");
+        assertTrue(receivedDelivery.get().isPartial(), "Delivery should be partial");
+        assertEquals(1, deliverReads.get(), "Deliver should have been read once for two transfers");
+
+        peer.waitForScriptToComplete();
+
+        assertTrue(engine.isFailed());
+
+        assertNotNull(failure);
+    }
+
+    @Test
+    public void testFailureOnViolationOfPerDeliveryTransferLimitWithEmptyTransfers() throws Exception {
+        Engine engine = EngineFactory.PROTON.createNonSaslEngine();
+        engine.errorHandler(result -> failure = result.failureCause());
+        engine.configuration().setMaxTransfersPerDelivery(3);
+        ProtonTestConnector peer = createTestPeer(engine);
+
+        String text = "test-string-for-split-frame-delivery";
+        byte[] encoded = text.getBytes(StandardCharsets.UTF_8);
+        byte[] first = Arrays.copyOfRange(encoded, 0, encoded.length / 2);
+
+        peer.expectAMQPHeader().respondWithAMQPHeader();
+        peer.expectOpen().respond().withContainerId("driver");
+        peer.expectBegin().respond();
+        peer.expectAttach().respond();
+        peer.expectFlow().withLinkCredit(1);
+        peer.remoteTransfer().withDeliveryId(0)
+                             .withDeliveryTag(new byte[] {0})
+                             .withMore(true)
+                             .withMessageFormat(0)
+                             .withBody().withData(first).also().queue();
+        peer.remoteTransfer().withDeliveryId(0)
+                             .withDeliveryTag(new byte[] {0})
+                             .withMore(true)
+                             .withMessageFormat(0)
+                             .queue();
+        peer.remoteTransfer().withDeliveryId(0)
+                             .withDeliveryTag(new byte[] {0})
+                             .withMore(true)
+                             .withMessageFormat(0)
+                             .queue();
+        peer.expectClose().withError(LinkError.TRANSFER_LIMIT_EXCEEDED.toString());
+
+        Connection connection = engine.start();
+
+        // Default engine should start and return a connection immediately
+        assertNotNull(connection);
+
+        connection.open();
+        Session session = connection.session();
+        session.open();
+        Receiver receiver = session.receiver("test");
+
+        final AtomicBoolean deliveryArrived = new AtomicBoolean();
+        final AtomicReference<IncomingDelivery> receivedDelivery = new AtomicReference<>();
+        final AtomicInteger deliverReads = new AtomicInteger();
+
+        receiver.deliveryReadHandler(delivery -> {
+            deliveryArrived.set(true);
+            receivedDelivery.set(delivery);
+            deliverReads.incrementAndGet();
+        });
+
+        receiver.open();
+        receiver.addCredit(1);
+
+        assertTrue(deliveryArrived.get(), "Delivery did not arrive at the receiver");
+        assertTrue(receivedDelivery.get().isPartial(), "Delivery should be partial");
+        assertEquals(2, deliverReads.get(), "Deliver should have been read twice for three transfers");
+
+        peer.waitForScriptToComplete();
+
+        assertTrue(engine.isFailed());
+
+        assertNotNull(failure);
+    }
+
+    @Test
+    public void testFailureOnViolationOfPerDeliveryTransferLimitSetToOneTransfer() throws Exception {
+        Engine engine = EngineFactory.PROTON.createNonSaslEngine();
+        engine.errorHandler(result -> failure = result.failureCause());
+        // Essentially limits all deliveries to be contained in one transfer
+        engine.configuration().setMaxTransfersPerDelivery(1);
+        ProtonTestConnector peer = createTestPeer(engine);
+
+        String text = "test-string-for-split-frame-delivery";
+        byte[] encoded = text.getBytes(StandardCharsets.UTF_8);
+        byte[] first = Arrays.copyOfRange(encoded, 0, encoded.length / 2);
+
+        peer.expectAMQPHeader().respondWithAMQPHeader();
+        peer.expectOpen().respond().withContainerId("driver");
+        peer.expectBegin().respond();
+        peer.expectAttach().respond();
+        peer.expectFlow().withLinkCredit(1);
+        peer.remoteTransfer().withDeliveryId(0)
+                             .withDeliveryTag(new byte[] {0})
+                             .withMore(true)
+                             .withMessageFormat(0)
+                             .withBody().withData(first).also().queue();
+        peer.expectClose().withError(LinkError.TRANSFER_LIMIT_EXCEEDED.toString());
+
+        Connection connection = engine.start();
+
+        // Default engine should start and return a connection immediately
+        assertNotNull(connection);
+
+        connection.open();
+        Session session = connection.session();
+        session.open();
+        Receiver receiver = session.receiver("test");
+
+        final AtomicBoolean deliveryArrived = new AtomicBoolean();
+        final AtomicReference<IncomingDelivery> receivedDelivery = new AtomicReference<>();
+        final AtomicInteger deliverReads = new AtomicInteger();
+
+        receiver.deliveryReadHandler(delivery -> {
+            deliveryArrived.set(true);
+            receivedDelivery.set(delivery);
+            deliverReads.incrementAndGet();
+        });
+
+        receiver.open();
+        receiver.addCredit(1);
+
+        assertFalse(deliveryArrived.get(), "Delivery should not arrive at the receiver");
+        assertEquals(0, deliverReads.get(), "Deliver should not be called in this configuration");
+
+        peer.waitForScriptToComplete();
+
+        assertTrue(engine.isFailed());
+
+        assertNotNull(failure);
     }
 }
