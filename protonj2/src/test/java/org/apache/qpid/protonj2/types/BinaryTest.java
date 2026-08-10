@@ -18,6 +18,7 @@ package org.apache.qpid.protonj2.types;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -44,6 +45,10 @@ public class BinaryTest {
         assertNull(binary.asProtonBuffer());
         assertEquals(binary, binary.copy());
         assertEquals("", binary.toString());
+
+        int hash = binary.hashCode();
+
+        assertEquals(hash, binary.hashCode());
     }
 
     @Test
@@ -90,6 +95,28 @@ public class BinaryTest {
 
         assertFalse(bin1.equals(bin2), "Objects should not be equal");
         assertFalse(bin2.equals(bin1), "Objects should not be equal");
+    }
+
+    @Test
+    public void testHashCode() {
+        int length = 10;
+
+        Binary bin1 = createNewRepeatedValueBinary(length, (byte) 1);
+        Binary bin2 = createNewRepeatedValueBinary(length, (byte) 2);
+
+        int hash1 = bin1.hashCode();
+        int hash2 = bin2.hashCode();
+
+        assertNotEquals(0, hash1);
+        assertNotEquals(0, hash2);
+
+        assertNotEquals(hash1, hash2);
+
+        assertNotEquals(hash1, bin2.hashCode());
+        assertNotEquals(hash2, bin1.hashCode());
+
+        assertEquals(hash1, bin1.hashCode());
+        assertEquals(hash2, bin2.hashCode());
     }
 
     private Binary createSteppedValueBinary(int length) {
