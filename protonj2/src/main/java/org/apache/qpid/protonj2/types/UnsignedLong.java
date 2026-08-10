@@ -76,17 +76,12 @@ public final class UnsignedLong extends Number implements Comparable<UnsignedLon
         if (this == o) {
             return true;
         }
-        if (o == null || getClass() != o.getClass()) {
-            return false;
+
+        if (o instanceof UnsignedLong other) {
+            return underlying == other.underlying;
         }
 
-        UnsignedLong that = (UnsignedLong) o;
-
-        if (underlying != that.underlying) {
-            return false;
-        }
-
-        return true;
+        return false;
     }
 
     /**

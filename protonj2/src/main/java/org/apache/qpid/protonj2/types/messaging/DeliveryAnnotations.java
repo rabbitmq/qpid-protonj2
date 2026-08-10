@@ -66,22 +66,15 @@ public final class DeliveryAnnotations implements Section<Map<Symbol, Object>> {
         if (this == obj) {
             return true;
         }
-        if (obj == null) {
-            return false;
-        }
-        if (getClass() != obj.getClass()) {
-            return false;
-        }
 
-        DeliveryAnnotations other = (DeliveryAnnotations) obj;
-        if (value == null) {
-            if (other.value != null) {
-                return false;
+        if (obj instanceof DeliveryAnnotations other) {
+            if (value == null) {
+                return other.value == null;
             }
-        } else if (!value.equals(other.value)) {
-            return false;
+
+            return value.equals(other.value);
         }
 
-        return true;
+        return false;
     }
 }

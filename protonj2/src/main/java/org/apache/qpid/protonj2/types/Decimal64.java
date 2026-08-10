@@ -85,17 +85,12 @@ public final class Decimal64 extends Number {
         if (this == o) {
             return true;
         }
-        if (o == null || getClass() != o.getClass()) {
-            return false;
+
+        if (o instanceof Decimal64 other) {
+            return bits == other.bits;
         }
 
-        final Decimal64 decimal64 = (Decimal64) o;
-
-        if (bits != decimal64.bits) {
-            return false;
-        }
-
-        return true;
+        return false;
     }
 
     @Override

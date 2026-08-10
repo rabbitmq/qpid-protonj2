@@ -62,17 +62,12 @@ public final class UnsignedInteger extends Number implements Comparable<Unsigned
         if (this == o) {
             return true;
         }
-        if (o == null || getClass() != o.getClass()) {
-            return false;
+
+        if (o instanceof UnsignedInteger other) {
+            return underlying == other.underlying;
         }
 
-        UnsignedInteger that = (UnsignedInteger) o;
-
-        if (underlying != that.underlying) {
-            return false;
-        }
-
-        return true;
+        return false;
     }
 
     /**

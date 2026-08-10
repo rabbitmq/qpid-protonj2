@@ -124,8 +124,7 @@ public final class Binary {
     public final int hashCode() {
         int hc = hashCode;
         if (hc == 0 && buffer != null) {
-            hc = buffer.hashCode();
-            hashCode = hc;
+            hc = hashCode = buffer.hashCode();
         }
         return hc;
     }
@@ -136,20 +135,15 @@ public final class Binary {
             return true;
         }
 
-        if (o == null || getClass() != o.getClass()) {
-            return false;
+        if (o instanceof Binary other) {
+            if (buffer == null) {
+                return other.buffer == null;
+            }
+
+            return buffer.equals(other.buffer);
         }
 
-        Binary other = (Binary) o;
-        if (getLength() != other.getLength()) {
-            return false;
-        }
-
-        if (buffer == null) {
-            return other.buffer == null;
-        }
-
-        return buffer.equals(other.buffer);
+        return false;
     }
 
     public int getLength() {

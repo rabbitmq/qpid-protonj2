@@ -108,23 +108,22 @@ public final class ErrorCondition {
         if (this == o) {
             return true;
         }
-        if (o == null || getClass() != o.getClass()) {
-            return false;
+
+        if (o instanceof ErrorCondition other) {
+            if (condition != null ? !condition.equals(other.condition) : other.condition != null) {
+                return false;
+            }
+            if (description != null ? !description.equals(other.description) : other.description != null) {
+                return false;
+            }
+            if (info != null ? !info.equals(other.info) : other.info != null) {
+                return false;
+            }
+
+            return true;
         }
 
-        ErrorCondition that = (ErrorCondition) o;
-
-        if (condition != null ? !condition.equals(that.condition) : that.condition != null) {
-            return false;
-        }
-        if (description != null ? !description.equals(that.description) : that.description != null) {
-            return false;
-        }
-        if (info != null ? !info.equals(that.info) : that.info != null) {
-            return false;
-        }
-
-        return true;
+        return false;
     }
 
     @Override

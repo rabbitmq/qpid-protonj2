@@ -65,22 +65,15 @@ public final class AmqpSequence<E> implements Section<List<E>> {
         if (this == obj) {
             return true;
         }
-        if (obj == null) {
-            return false;
-        }
-        if (getClass() != obj.getClass()) {
-            return false;
-        }
 
-        AmqpSequence<?> other = (AmqpSequence<?>) obj;
-        if (value == null) {
-            if (other.value != null) {
-                return false;
+        if (obj instanceof AmqpSequence other) {
+            if (value == null) {
+                return other.value == null;
             }
-        } else if (!value.equals(other.value)) {
-            return false;
+
+            return value.equals(other.value);
         }
 
-        return true;
+        return false;
     }
 }

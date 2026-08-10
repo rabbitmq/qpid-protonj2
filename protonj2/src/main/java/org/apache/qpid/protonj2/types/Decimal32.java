@@ -85,17 +85,12 @@ public final class Decimal32 extends Number {
         if (this == o) {
             return true;
         }
-        if (o == null || getClass() != o.getClass()) {
-            return false;
+
+        if (o instanceof Decimal32 other) {
+            return bits == other.bits;
         }
 
-        final Decimal32 decimal32 = (Decimal32) o;
-
-        if (bits != decimal32.bits) {
-            return false;
-        }
-
-        return true;
+        return false;
     }
 
     @Override

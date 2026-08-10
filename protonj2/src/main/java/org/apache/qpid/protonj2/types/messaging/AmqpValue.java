@@ -62,22 +62,15 @@ public final class AmqpValue<E> implements Section<E> {
         if (this == obj) {
             return true;
         }
-        if (obj == null) {
-            return false;
-        }
-        if (getClass() != obj.getClass()) {
-            return false;
-        }
 
-        AmqpValue<?> other = (AmqpValue<?>) obj;
-        if (value == null) {
-            if (other.value != null) {
-                return false;
+        if (obj instanceof AmqpValue other) {
+            if (value == null) {
+                return other.value == null;
             }
-        } else if (!value.equals(other.value)) {
-            return false;
+
+            return value.equals(other.value);
         }
 
-        return true;
+        return false;
     }
 }

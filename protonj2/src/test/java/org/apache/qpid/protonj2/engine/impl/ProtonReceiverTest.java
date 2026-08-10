@@ -4789,6 +4789,7 @@ public class ProtonReceiverTest extends ProtonEngineTestSupport {
         assertNull(failure);
     }
 
+    @Test
     public void testFailureOnViolationOfPerDeliveryTransferLimit() throws Exception {
         Engine engine = EngineFactory.PROTON.createNonSaslEngine();
         engine.errorHandler(result -> failure = result.failureCause());

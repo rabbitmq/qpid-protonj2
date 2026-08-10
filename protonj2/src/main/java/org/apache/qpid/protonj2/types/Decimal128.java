@@ -116,20 +116,13 @@ public final class Decimal128 extends Number {
             return true;
         }
 
-        if (o == null || getClass() != o.getClass()) {
-            return false;
+        if (o instanceof Decimal128 other) {
+            if (lsb == other.lsb && msb == other.msb) {
+                return true;
+            }
         }
 
-        final Decimal128 that = (Decimal128) o;
-
-        if (lsb != that.lsb) {
-            return false;
-        }
-        if (msb != that.msb) {
-            return false;
-        }
-
-        return true;
+        return false;
     }
 
     @Override

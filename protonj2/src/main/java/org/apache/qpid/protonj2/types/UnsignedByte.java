@@ -70,17 +70,12 @@ public final class UnsignedByte extends Number implements Comparable<UnsignedByt
         if (this == o) {
             return true;
         }
-        if (o == null || getClass() != o.getClass()) {
-            return false;
+
+        if (o instanceof UnsignedByte other) {
+            return underlying == other.underlying;
         }
 
-        UnsignedByte that = (UnsignedByte) o;
-
-        if (underlying != that.underlying) {
-            return false;
-        }
-
-        return true;
+        return false;
     }
 
     /**

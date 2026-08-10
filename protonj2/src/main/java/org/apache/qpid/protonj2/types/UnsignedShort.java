@@ -66,17 +66,11 @@ public final class UnsignedShort extends Number implements Comparable<UnsignedSh
             return true;
         }
 
-        if (o == null || getClass() != o.getClass()) {
-            return false;
+        if (o instanceof UnsignedShort other) {
+            return underlying == other.underlying;
         }
 
-        UnsignedShort that = (UnsignedShort) o;
-
-        if (underlying != that.underlying) {
-            return false;
-        }
-
-        return true;
+        return false;
     }
 
     /**

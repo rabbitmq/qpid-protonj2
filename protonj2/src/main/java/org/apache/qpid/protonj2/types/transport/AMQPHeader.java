@@ -136,23 +136,16 @@ public final class AMQPHeader {
         if (this == obj) {
             return true;
         }
-        if (obj == null) {
-            return false;
-        }
-        if (getClass() != obj.getClass()) {
-            return false;
-        }
 
-        AMQPHeader other = (AMQPHeader) obj;
-        if (buffer == null) {
-            if (other.buffer != null) {
-                return false;
+        if (obj instanceof AMQPHeader other) {
+            if (buffer == null) {
+                return other.buffer == null;
             }
-        } else if (!buffer.equals(other.buffer)) {
-            return false;
+
+            return buffer.equals(other.buffer);
         }
 
-        return true;
+        return false;
     }
 
     @Override

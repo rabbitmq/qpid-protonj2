@@ -165,18 +165,15 @@ public final class Data implements Section<byte[]> {
         if (this == obj) {
             return true;
         }
-        if (obj == null) {
-            return false;
-        }
-        if (getClass() != obj.getClass()) {
-            return false;
+
+        if (obj instanceof Data other) {
+            if (buffer == null) {
+                return other.buffer == null;
+            }
+
+            return buffer.equals(other.buffer);
         }
 
-        Data other = (Data) obj;
-        if (buffer == null) {
-            return other.buffer == null;
-        }
-
-        return buffer.equals(other.buffer);
+        return false;
     }
 }

@@ -56,20 +56,19 @@ public class UnknownDescribedType implements DescribedType {
         if (this == o) {
             return true;
         }
-        if (o == null || getClass() != o.getClass()) {
-            return false;
+
+        if (o instanceof UnknownDescribedType other) {
+            if (described != null ? !described.equals(other.described) : other.described != null) {
+                return false;
+            }
+            if (descriptor != null ? !descriptor.equals(other.descriptor) : other.descriptor != null) {
+                return false;
+            }
+
+            return true;
         }
 
-        final UnknownDescribedType that = (UnknownDescribedType) o;
-
-        if (described != null ? !described.equals(that.described) : that.described != null) {
-            return false;
-        }
-        if (descriptor != null ? !descriptor.equals(that.descriptor) : that.descriptor != null) {
-            return false;
-        }
-
-        return true;
+        return false;
     }
 
     @Override
