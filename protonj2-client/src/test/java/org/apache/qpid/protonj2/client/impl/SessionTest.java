@@ -1579,4 +1579,95 @@ public class SessionTest extends ImperativeClientTestCase {
             peer.waitForScriptToComplete();
         }
     }
+
+    @Test
+    public void testNextReceiverRoundRobinPolicyReturnsCorrectReceiver() throws Exception {
+        byte[] payload = createEncodedMessage(new AmqpValue<String>("Hello World"));
+
+        try (ProtonTestServer peer = new ProtonTestServer()) {
+            peer.expectSASLAnonymousConnect();
+            peer.expectOpen().respond();
+            peer.expectBegin().respond();
+            peer.expectAttach().ofReceiver().respond();
+            peer.expectFlow().withLinkCredit(10);
+            peer.expectAttach().ofReceiver().respond();
+            peer.expectFlow().withLinkCredit(10);
+            peer.expectAttach().ofReceiver().respond();
+            peer.expectFlow().withLinkCredit(10);
+            peer.expectAttach().ofReceiver().respond();
+            peer.expectFlow().withLinkCredit(10);
+            peer.remoteTransfer().withHandle(1)
+                                 .withDeliveryId(0)
+                                 .withMore(false)
+                                 .withMessageFormat(0)
+                                 .withPayload(payload).queue();
+            peer.remoteTransfer().withHandle(1)
+                                 .withDeliveryId(1)
+                                 .withMore(false)
+                                 .withMessageFormat(0)
+                                 .withPayload(payload).queue();
+            peer.remoteTransfer().withHandle(2)
+                                 .withDeliveryId(2)
+                                 .withMore(false)
+                                 .withMessageFormat(0)
+                                 .withPayload(payload).queue();
+            peer.remoteTransfer().withHandle(3)
+                                 .withDeliveryId(3)
+                                 .withMore(false)
+                                 .withMessageFormat(0)
+                                 .withPayload(payload).queue();
+            peer.start();
+
+            URI remoteURI = peer.getServerURI();
+
+            LOG.info("Test started, peer listening on: {}", remoteURI);
+
+            Client container = Client.create();
+            ConnectionOptions options = new ConnectionOptions().defaultNextReceiverPolicy(NextReceiverPolicy.RANDOM);
+            Connection connection = container.connect(remoteURI.getHost(), remoteURI.getPort(), options);
+            SessionOptions sessionOptions = new SessionOptions().defaultNextReceiverPolicy(NextReceiverPolicy.ROUND_ROBIN);
+            Session session = connection.openSession(sessionOptions);
+
+            ReceiverOptions receiverOptions = new ReceiverOptions().creditWindow(10).autoAccept(false);
+            Receiver receiver1 = session.openReceiver("test-receiver1", receiverOptions).openFuture().get();
+            Receiver receiver2 = session.openReceiver("test-receiver2", receiverOptions).openFuture().get();
+            Receiver receiver3 = session.openReceiver("test-receiver3", receiverOptions).openFuture().get();
+            Receiver receiver4 = session.openReceiver("test-receiver4", receiverOptions).openFuture().get();
+
+            peer.waitForScriptToComplete();
+
+            Wait.waitFor(() -> receiver2.queuedDeliveries() == 2);
+            Wait.waitFor(() -> receiver3.queuedDeliveries() == 1);
+            Wait.waitFor(() -> receiver4.queuedDeliveries() == 1);
+
+            assertEquals(0, receiver1.queuedDeliveries());
+
+            Receiver next = session.nextReceiver();
+            assertSame(next, receiver2, "Should have gotten receiver 2");
+            next = session.nextReceiver();
+            assertSame(next, receiver3, "Should have gotten receiver 3");
+            next = session.nextReceiver();
+            assertSame(next, receiver4, "Should have gotten receiver 4");
+
+            peer.waitForScriptToComplete();
+
+            peer.remoteTransfer().withHandle(0)
+                                 .withDeliveryId(4)
+                                 .withMore(false)
+                                 .withMessageFormat(0)
+                                 .withPayload(payload).now();
+
+            Wait.waitFor(() -> receiver1.queuedDeliveries() == 1);
+
+            next = session.nextReceiver();
+            assertSame(next, receiver1);
+
+            peer.waitForScriptToComplete();
+            peer.expectClose().respond();
+
+            connection.close();
+
+            peer.waitForScriptToComplete();
+        }
+    }
 }
