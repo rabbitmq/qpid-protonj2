@@ -20,6 +20,7 @@ import java.lang.ref.Cleaner;
 import java.lang.ref.Cleaner.Cleanable;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
+import java.util.Arrays;
 import java.util.Objects;
 
 /**
@@ -749,6 +750,9 @@ public abstract class ProtonBufferUtils {
      * @return true if both buffers are equal.
      */
     public static boolean equals(ProtonBuffer left, ProtonBuffer right) {
+        Objects.requireNonNull(left, "The left hand buffer cannot be null");
+        Objects.requireNonNull(right, "The right hand buffer cannot be null");
+
         if (left == right) {
             return true;
         }
@@ -759,8 +763,27 @@ public abstract class ProtonBufferUtils {
             return false;
         }
 
-        return equalsImpl(left, left.getReadOffset(), right, right.getReadOffset(), length);
-   }
+        if (left.componentCount() == 1 && right.componentCount() == 1) {
+            try (ProtonBufferComponentAccessor leftComponentAccess = left.componentAccessor();
+                 ProtonBufferComponentAccessor rightComponentAccess = right.componentAccessor()) {
+
+                final ProtonBufferComponent leftComponent = leftComponentAccess.first();
+                final ProtonBufferComponent rightComponent = rightComponentAccess.first();
+
+                // We opt for fast path array comparison via JDK APIs that can use vectorization
+                // to speed up the operation vs linear cross buffer read based comparisons.
+                if (leftComponent.hasReadbleArray() && rightComponent.hasReadbleArray()) {
+                    final int leftReadOffset = leftComponent.getReadableArrayOffset();
+                    final int rightReadOffset = rightComponent.getReadableArrayOffset();
+
+                    return Arrays.equals(leftComponent.getReadableArray(), leftReadOffset, leftReadOffset + length,
+                                         rightComponent.getReadableArray(), rightReadOffset, rightReadOffset + length);
+                }
+            }
+        }
+
+         return equalsImpl(left, left.getReadOffset(), right, right.getReadOffset(), length);
+    }
 
     /**
      * Compares two {@link ProtonBuffer} instances for equality.

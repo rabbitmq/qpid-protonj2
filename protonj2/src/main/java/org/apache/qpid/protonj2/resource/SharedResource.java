@@ -17,6 +17,8 @@
 
 package org.apache.qpid.protonj2.resource;
 
+import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
+
 /**
  * A referenced resource is one in which a number of objects can claim reference
  * and the resource will not close or free claimed resources until all references
@@ -26,30 +28,32 @@ package org.apache.qpid.protonj2.resource;
  */
 public abstract class SharedResource<T extends Resource<T>> implements Resource<T>, AutoCloseable {
 
+    @SuppressWarnings("rawtypes")
+    private static final AtomicIntegerFieldUpdater<SharedResource> COUNT_UPDATER =
+        AtomicIntegerFieldUpdater.newUpdater(SharedResource.class, "count");
+
     private static final int CLOSED = -1;
     private static final int TRANSFERRED = -2;
 
-    private int count;
+    private volatile int count;
 
     protected final T acquire() {
         if (count < 0) {
             throw resourceIsClosedException();
         }
 
-        count++; // Now shared and must have multiple closes
+        COUNT_UPDATER.incrementAndGet(this); // Now shared and must have multiple closes
 
         return self();
     }
 
     @Override
     public final void close() {
-        int current = count;
+        int current = COUNT_UPDATER.getAndDecrement(this);
 
-        if (current-- == 0) {
+        if (current == 0) {
             count = CLOSED;
             releaseResourceOwnership();
-        } else if (current >= 0) {
-            --count;
         }
     }
 
