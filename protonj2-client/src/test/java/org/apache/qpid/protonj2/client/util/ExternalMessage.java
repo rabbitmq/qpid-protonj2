@@ -270,6 +270,11 @@ public class ExternalMessage<E> implements Message<E> {
     }
 
     @Override
+    public boolean hasGroupSequence() {
+        return properties != null && properties.hasGroupSequence();
+    }
+
+    @Override
     public int groupSequence() {
         return properties != null ? (int) properties.getGroupSequence() : 0;
     }
